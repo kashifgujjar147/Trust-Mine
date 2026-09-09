@@ -1,0 +1,1639 @@
+import {api,mockMode,setToken,clearToken} from './api';
+import * as m from './mock';
+import type {
+  PackagePlan,
+  Deposit,
+  Withdrawal,
+  Transaction,
+  TeamMember,
+  RewardTier,
+  PromoCode,
+  PaymentMethod,
+  Notification,
+  SupportTicket,
+  DashboardData,
+  AdminDashboardData,
+  PlatformSettings,
+  User,
+  PackagePurchase
+} from '../types';
+
+const delay=async <T>(v:T)=>{
+  await new Promise(r=>setTimeout(r,180));
+  return structuredClone(v);
+};
+
+async function getOr<T>(
+  url:string,
+  fallback:T,
+  key?:string
+):Promise<T>{
+  if(!mockMode){
+    const r=await api.get(url);
+    return (key?(r.data?.[key]??r.data):r.data) as T;
+  }
+
+  return delay(fallback);
+}
+
+const nowId=(prefix:string)=>
+  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+
+export const authService={
+
+  async login(email:string,password:string){
+    if(mockMode){
+      const isAdmin=email.toLowerCase().includes('admin');
+
+      if(
+        (isAdmin&&password!=='Admin@12345')||
+        (!isAdmin&&password!=='User@12345')
+      ){
+        throw new Error('Invalid demo credentials');
+      }
+
+      const user=isAdmin?m.mockAdmin:m.mockUser;
+
+      setToken(`mock-${user.role.toLowerCase()}`);
+
+      return {
+        token:'mock',
+        user
+      };
+    }
+
+    const r=await api.post('/auth/login',{email,password});
+
+    setToken(r.data.token);
+
+    return r.data;
+  },
+
+  async register(data:Record<string,string>){
+    if(mockMode){
+      if(
+        data.referralCode&&
+        !data.referralCode.startsWith('TM-')
+      ){
+        throw new Error('Invalid referral code');
+      }
+
+      const user={
+        ...m.mockUser,
+        ...data,
+        _id:nowId('u'),
+        userId:`TM${Math.floor(10000+Math.random()*89999)}`,
+        role:'USER' as const,
+        referralCode:
+          data.referralCode||
+          `REF${Math.floor(Math.random()*99999)}`,
+        createdAt:new Date().toISOString(),
+        status:'ACTIVE'
+      };
+
+      Object.assign(m.mockUser,user);
+
+      setToken('mock-user');
+
+      return {
+        token:'mock',
+        user
+      };
+    }
+
+    const r=await api.post('/auth/register',data);
+
+    setToken(r.data.token);
+
+    return r.data;
+  },
+
+  async me(){
+    if(mockMode){
+      const isAdmin=
+        localStorage.getItem('tm_token')==='mock-admin';
+
+      return isAdmin
+        ?delay(m.mockAdmin)
+        :delay(m.mockUser);
+    }
+
+    return (await api.get('/auth/me')).data.user;
+  },
+
+  logout(){
+    clearToken();
+  }
+};
+
+export const packageService={
+
+  getPackages:()=>getOr<PackagePlan[]>(
+    '/packages',
+    m.packages,
+    'packages'
+  ),
+
+  async getPackage(id:string){
+    if(mockMode){
+      return delay(
+        m.packages.find(p=>p._id===id)
+      );
+    }
+
+    const r=await api.get(`/packages/${id}`);
+
+    return r.data.package as PackagePlan;
+  }
+};
+
+export const depositService={
+
+  getDeposits:()=>getOr<Deposit[]>(
+    '/deposits',
+    m.deposits,
+    'deposits'
+  ),
+
+  async createDeposit(input:{
+    packageId:string;
+    method:string;
+    amount:number;
+    reference:string;
+    proofUrl?:string
+  }){
+
+    if(mockMode){
+
+      const pkg=m.packages.find(
+        p=>p._id===input.packageId
+      );
+
+      if(!pkg){
+        throw new Error('Package not found');
+      }
+
+      if(Number(input.amount)!==pkg.amount){
+        throw new Error(
+          'Deposit amount must match package amount'
+        );
+      }
+
+      if(!input.reference.trim()){
+        throw new Error(
+          'Payment reference is required'
+        );
+      }
+
+      const existing=m.deposits.find(
+        d=>
+          d.reference?.toLowerCase()===
+          input.reference.toLowerCase()
+      );
+
+      if(existing){
+        throw new Error(
+          'Payment reference already exists'
+        );
+      }
+
+      const created:Deposit={
+        _id:nowId('d'),
+        transactionId:nowId('DEP'),
+        amount:Number(input.amount),
+        status:'PENDING',
+        method:input.method,
+        packageId:pkg._id,
+        packageName:pkg.name,
+        reference:input.reference,
+        createdAt:new Date().toISOString()
+      };
+
+      m.deposits.unshift(created);
+
+      m.transactions.unshift({
+        _id:nowId('tx'),
+        transactionId:created.transactionId,
+        type:'DEPOSIT',
+        amount:created.amount,
+        fee:0,
+        netAmount:created.amount,
+        status:'PENDING',
+        reference:created.transactionId,
+        createdAt:created.createdAt
+      });
+
+      return delay({
+        message:'Deposit submitted for verification',
+        deposit:created
+      });
+    }
+
+    return (
+      await api.post('/deposits',{
+        packageId:input.packageId,
+        method:input.method,
+        amount:input.amount,
+        reference:input.reference,
+        proofUrl:input.proofUrl
+      })
+    ).data;
+  }
+};
+
+export const withdrawalService={
+
+  getWithdrawals:()=>getOr<Withdrawal[]>(
+    '/withdrawals',
+    m.withdrawals,
+    'withdrawals'
+  ),
+
+  async createWithdrawal(
+    input:{
+      amount:number;
+      method:string;
+      account:string
+    },
+    idempotencyKey?:string
+  ){
+
+    if(mockMode){
+
+      const amount=Number(input.amount);
+
+      if(
+        !Number.isFinite(amount)||
+        amount<m.settings.minimumWithdrawal
+      ){
+        throw new Error(
+          `Minimum withdrawal is ${m.settings.minimumWithdrawal}`
+        );
+      }
+
+      if(amount>m.dashboard.availableBalance){
+        throw new Error(
+          'Insufficient available balance'
+        );
+      }
+
+      const fee=Number(
+        (
+          amount*
+          m.settings.withdrawalFeePercent/
+          100
+        ).toFixed(8)
+      );
+
+      const w:Withdrawal={
+        _id:nowId('w'),
+        transactionId:nowId('WDR'),
+        amount,
+        fee,
+        netAmount:Number(
+          (amount-fee).toFixed(8)
+        ),
+        method:input.method,
+        account:input.account,
+        status:'PENDING',
+        reservedAmount:amount,
+        createdAt:new Date().toISOString()
+      };
+
+      m.withdrawals.unshift(w);
+
+      m.transactions.unshift({
+        _id:nowId('tx'),
+        transactionId:w.transactionId,
+        type:'WITHDRAWAL',
+        amount,
+        fee,
+        netAmount:amount,
+        status:'PENDING',
+        reference:w.transactionId,
+        createdAt:w.createdAt
+      });
+
+      if(fee>0){
+        m.transactions.unshift({
+          _id:nowId('tx'),
+          transactionId:`${w.transactionId}-FEE`,
+          type:'WITHDRAWAL_FEE',
+          amount:fee,
+          fee:0,
+          netAmount:fee,
+          status:'PENDING',
+          reference:`${w.transactionId}-FEE`,
+          createdAt:w.createdAt
+        });
+      }
+
+      m.dashboard.availableBalance=
+        Number(
+          (
+            m.dashboard.availableBalance-
+            amount
+          ).toFixed(8)
+        );
+
+      m.dashboard.lockedWithdrawalAmount=
+        Number(
+          (
+            (m.dashboard.lockedWithdrawalAmount||0)+
+            amount
+          ).toFixed(8)
+        );
+
+      return delay({
+        message:'Withdrawal request submitted',
+        withdrawal:w
+      });
+    }
+
+    return (
+      await api.post(
+        '/withdrawals',
+        input,
+        {
+          headers:{
+            'Idempotency-Key':
+              idempotencyKey||nowId('IDEM')
+          }
+        }
+      )
+    ).data;
+  }
+};
+
+export const transactionService={
+
+  async getTransactions(filters?:{
+    q?:string;
+    type?:string;
+    status?:string;
+    from?:string;
+    to?:string
+  }){
+
+    if(mockMode){
+
+      let rows=structuredClone(m.transactions);
+
+      if(filters?.q){
+        const q=filters.q.toLowerCase();
+
+        rows=rows.filter(
+          t=>
+            (
+              t.transactionId+
+              t.type+
+              (t.reference||'')+
+              (t.description||'')
+            )
+              .toLowerCase()
+              .includes(q)
+        );
+      }
+
+      if(filters?.type){
+        rows=rows.filter(
+          t=>t.type===filters.type
+        );
+      }
+
+      if(filters?.status){
+        rows=rows.filter(
+          t=>t.status===filters.status
+        );
+      }
+
+      if(filters?.from){
+        rows=rows.filter(
+          t=>
+            new Date(t.createdAt)>=
+            new Date(filters.from!)
+        );
+      }
+
+      if(filters?.to){
+        rows=rows.filter(
+          t=>
+            new Date(t.createdAt)<=
+            new Date(filters.to!)
+        );
+      }
+
+      return delay(rows);
+    }
+
+    const r=await api.get(
+      '/transactions',
+      {params:filters}
+    );
+
+    return (
+      r.data?.transactions??r.data
+    ) as Transaction[];
+  }
+};
+
+export const teamService={
+
+  getTeam:async()=>
+    mockMode
+      ?delay(m.team)
+      :(await api.get('/team')).data.members,
+
+  getReferral:async()=>
+    mockMode
+      ?delay({
+          link:`https://trustmine.example/register?ref=${m.mockUser.referralCode}`,
+          code:m.mockUser.referralCode,
+          levels:m.settings.commissionRates
+        })
+      :(await api.get('/team')).data.referral
+};
+
+export const rewardService={
+
+  getRewards:async()=>
+    mockMode
+      ?delay(m.rewards)
+      :(await api.get('/rewards')).data.rewards,
+
+  getStatus:async()=>{
+    if(mockMode){
+
+      const qualifyingVolume=
+        m.transactions
+          .filter(
+            t=>
+              t.type==='DEPOSIT'&&
+              t.status==='COMPLETED'
+          )
+          .reduce(
+            (sum,t)=>sum+t.amount,
+            0
+          );
+
+      return delay({
+        rewards:m.rewards,
+        qualifyingVolume,
+        eligible:m.rewards
+          .filter(
+            r=>r.threshold<=qualifyingVolume
+          )
+          .map(r=>r._id),
+        claimedRewardIds:m.claimedRewardIds
+      });
+    }
+
+    return (
+      await api.get('/rewards')
+    ).data;
+  },
+
+  claimReward:async(id:string)=>{
+
+    if(mockMode){
+
+      if(m.claimedRewardIds.includes(id)){
+        throw new Error(
+          'Reward already claimed'
+        );
+      }
+
+      const r=m.rewards.find(
+        x=>x._id===id
+      );
+
+      const volume=
+        m.transactions
+          .filter(
+            t=>
+              t.type==='DEPOSIT'&&
+              t.status==='COMPLETED'
+          )
+          .reduce(
+            (s,t)=>s+t.amount,
+            0
+          );
+
+      if(!r||volume<r.threshold){
+        throw new Error(
+          'Reward not eligible'
+        );
+      }
+
+      m.claimedRewardIds.push(id);
+
+      m.dashboard.totalBalance=
+        (m.dashboard.totalBalance??m.dashboard.balance)+
+        r.reward;
+
+      m.dashboard.balance=
+        m.dashboard.totalBalance;
+
+      m.dashboard.availableBalance+=r.reward;
+      m.dashboard.rewards+=r.reward;
+
+      const tx={
+        _id:nowId('tx'),
+        transactionId:nowId('REWARD'),
+        type:'REWARD' as const,
+        amount:r.reward,
+        fee:0,
+        netAmount:r.reward,
+        status:'COMPLETED' as const,
+        reference:`REWARD-${id}`,
+        createdAt:new Date().toISOString()
+      };
+
+      m.transactions.unshift(tx);
+
+      return delay({
+        message:'Reward claimed',
+        transaction:tx
+      });
+    }
+
+    return (
+      await api.post(
+        `/rewards/${id}/claim`
+      )
+    ).data;
+  }
+};
+
+export const promoService={
+
+  getPromos:()=>getOr<PromoCode[]>(
+    '/promo',
+    m.promoCodes,
+    'promos'
+  ),
+
+  async validatePromo(code:string){
+
+    if(!mockMode){
+      return (
+        await api.post(
+          '/promo/validate',
+          {code}
+        )
+      ).data.promo;
+    }
+
+    const p=m.promoCodes.find(
+      x=>
+        x.code.toLowerCase()===
+        code.trim().toLowerCase()&&
+        x.status==='ACTIVE'
+    );
+
+    if(!p){
+      throw new Error(
+        'Promo code is invalid or inactive'
+      );
+    }
+
+    if(
+      p.expiresAt&&
+      new Date(p.expiresAt)<=new Date()
+    ){
+      throw new Error(
+        'Promo code expired'
+      );
+    }
+
+    const used=
+      m.promoUsage.filter(
+        x=>
+          x.code===p.code&&
+          x.userId===m.mockUser._id
+      ).length;
+
+    if(
+      p.perUserLimit&&
+      used>=p.perUserLimit
+    ){
+      throw new Error(
+        'Per-user usage limit reached'
+      );
+    }
+
+    if(
+      p.usageLimit&&
+      m.promoUsage.filter(
+        x=>x.code===p.code
+      ).length>=p.usageLimit
+    ){
+      throw new Error(
+        'Usage limit reached'
+      );
+    }
+
+    if(
+      p.minRequirement&&
+      m.dashboard.totalDeposit<p.minRequirement
+    ){
+      throw new Error(
+        `Minimum requirement is ${p.minRequirement}`
+      );
+    }
+
+    return delay(p);
+  },
+
+  async applyPromo(code:string){
+
+    if(!mockMode){
+
+      const p=
+        await promoService.validatePromo(code);
+
+      const key=nowId('PROMO');
+
+      const r=await api.post(
+        '/promo/apply',
+        {code},
+        {
+          headers:{
+            'Idempotency-Key':key
+          }
+        }
+      );
+
+      return {
+        ...r.data,
+        code:p.code,
+        rewardType:p.rewardType,
+        rewardValue:p.rewardValue
+      };
+    }
+
+    const p=
+      await promoService.validatePromo(code);
+
+    /*
+     * rewardValue is optional in PromoCode,
+     * so validate it before using it as a number.
+     */
+    const rewardValue=p.rewardValue;
+
+    if(
+      rewardValue===undefined||
+      !Number.isFinite(rewardValue)||
+      rewardValue<=0
+    ){
+      throw new Error(
+        'Promo reward value is invalid'
+      );
+    }
+
+    const usedKey=
+      `${p.code}:${m.mockUser._id}`;
+
+    if(
+      m.promoUsage.some(
+        x=>x.usageKey===usedKey
+      )
+    ){
+      throw new Error(
+        'Promo code already used'
+      );
+    }
+
+    m.promoUsage.push({
+      code:p.code,
+      userId:m.mockUser._id,
+      usageKey:usedKey
+    });
+
+    m.dashboard.totalBalance=
+      (m.dashboard.totalBalance??m.dashboard.balance)+
+      rewardValue;
+
+    m.dashboard.balance=
+  m.dashboard.totalBalance ?? 0;
+
+    m.dashboard.availableBalance+=
+      rewardValue;
+
+    m.dashboard.rewards+=
+      rewardValue;
+
+    const tx={
+      _id:nowId('tx'),
+      transactionId:nowId('PROMO'),
+      type:'PROMO_REWARD' as const,
+      amount:rewardValue,
+      fee:0,
+      netAmount:rewardValue,
+      status:'COMPLETED' as const,
+      reference:`PROMO-${p.code}`,
+      createdAt:new Date().toISOString()
+    };
+
+    m.transactions.unshift(tx);
+
+    return delay({
+      message:'Promo reward applied',
+      transaction:tx,
+      code:p.code,
+      rewardValue,
+      rewardType:p.rewardType
+    });
+  }
+};
+
+export const paymentMethodService={
+
+  getMethods:()=>getOr<PaymentMethod[]>(
+    '/payment-methods',
+    m.methods,
+    'methods'
+  )
+};
+
+export const notificationService={
+
+  getNotifications:()=>getOr<Notification[]>(
+    '/notifications',
+    m.notifications,
+    'notifications'
+  ),
+
+  markRead:async(id:string)=>{
+
+    if(mockMode){
+
+      const n=m.notifications.find(
+        x=>x._id===id
+      );
+
+      if(n){
+        n.read=true;
+      }
+
+      return delay(true);
+    }
+
+    await api.patch(
+      `/notifications/${id}/read`
+    );
+
+    return true;
+  }
+};
+
+export const supportService={
+
+  getTickets:()=>getOr<SupportTicket[]>(
+    '/support',
+    m.tickets,
+    'tickets'
+  ),
+
+  async createTicket(input:{
+    subject:string;
+    message:string
+  }){
+
+    if(mockMode){
+
+      const t:SupportTicket={
+        _id:nowId('s'),
+        ...input,
+        status:'OPEN',
+        createdAt:new Date().toISOString()
+      };
+
+      m.tickets.unshift(t);
+
+      return delay(t);
+    }
+
+    return (
+      await api.post('/support',input)
+    ).data;
+  }
+};
+
+export const settingsService={
+
+  getSettings:()=>getOr<PlatformSettings>(
+    '/settings',
+    m.settings
+  )
+};
+
+export const userService={
+
+  getProfile:async()=>
+    mockMode
+      ?delay(m.mockUser)
+      :(await api.get('/auth/me')).data.user,
+
+  updateProfile:async(
+    input:Partial<User>
+  )=>{
+
+    if(mockMode){
+
+      Object.assign(
+        m.mockUser,
+        input
+      );
+
+      return delay(m.mockUser);
+    }
+
+    return (
+      await api.patch(
+        '/users/me',
+        input
+      )
+    ).data.user;
+  }
+};
+
+export const dashboardService={
+
+  getDashboard:async()=>
+    mockMode
+      ?delay({
+          ...m.dashboard,
+          settings:m.settings
+        })
+      :(await api.get('/users/dashboard')).data
+};
+
+export const packagePurchaseService={
+
+  getPurchases:()=>getOr<PackagePurchase[]>(
+    '/package-purchases',
+    m.purchases,
+    'purchases'
+  )
+};
+
+export const adminService={
+
+  getDashboard:()=>getOr<AdminDashboardData>(
+    '/admin/dashboard',
+    m.adminDashboard
+  ),
+
+  getUsers:()=>getOr<User[]>(
+    '/admin/users',
+    [m.mockAdmin,m.mockUser],
+    'users'
+  ),
+
+  getDeposits:()=>getOr<Deposit[]>(
+    '/admin/deposits',
+    m.deposits,
+    'deposits'
+  ),
+
+  getWithdrawals:()=>getOr<Withdrawal[]>(
+    '/admin/withdrawals',
+    m.withdrawals,
+    'withdrawals'
+  ),
+
+  getTransactions:()=>getOr<Transaction[]>(
+    '/admin/transactions',
+    m.transactions,
+    'transactions'
+  ),
+
+  getPackages:()=>getOr<PackagePlan[]>(
+    '/admin/packages',
+    m.packages,
+    'packages'
+  ),
+
+  getPaymentMethods:()=>getOr<PaymentMethod[]>(
+    '/admin/payment-methods',
+    m.methods,
+    'methods'
+  ),
+
+  getRewards:()=>getOr<RewardTier[]>(
+    '/admin/rewards',
+    m.rewards,
+    'rewards'
+  ),
+
+  getPromos:()=>getOr<PromoCode[]>(
+    '/admin/promo',
+    m.promoCodes,
+    'promos'
+  ),
+
+  getSettings:()=>getOr<PlatformSettings>(
+    '/admin/settings',
+    m.settings
+  ),
+
+  approveDeposit:async(id:string)=>{
+
+    if(mockMode){
+
+      const d=m.deposits.find(
+        x=>x._id===id
+      );
+
+      if(!d||d.status!=='PENDING'){
+        throw new Error(
+          'Deposit is no longer pending'
+        );
+      }
+
+      d.status='COMPLETED';
+
+      const p=m.packages.find(
+        x=>x._id===d.packageId
+      );
+
+      if(
+        p&&
+        !m.purchases.some(
+          x=>x._id===`purchase-${d._id}`
+        )
+      ){
+
+        m.purchases.unshift({
+          _id:`purchase-${d._id}`,
+          packageId:p._id,
+          packageName:p.name,
+          packageAmount:p.amount,
+          status:'ACTIVE',
+          activatedAt:new Date().toISOString(),
+          cycleStart:new Date().toISOString(),
+          cycleEnd:new Date(
+            Date.now()+24*3600000
+          ).toISOString(),
+          currentCycle:0,
+          accruedAmount:0,
+          nextProcessAt:new Date(
+            Date.now()+24*3600000
+          ).toISOString()
+        });
+      }
+
+      const existing=
+        m.transactions.find(
+          t=>
+            t.reference===d.transactionId&&
+            t.type==='DEPOSIT'
+        );
+
+      if(existing){
+        existing.status='COMPLETED';
+      }else{
+
+        m.transactions.unshift({
+          _id:nowId('tx'),
+          transactionId:d.transactionId,
+          type:'DEPOSIT',
+          amount:d.amount,
+          fee:0,
+          netAmount:d.amount,
+          status:'COMPLETED',
+          reference:d.transactionId,
+          createdAt:d.createdAt
+        });
+      }
+
+      const total=
+        (m.dashboard.totalBalance??m.dashboard.balance)+
+        d.amount;
+
+      m.dashboard.totalBalance=total;
+      m.dashboard.balance=total;
+      m.dashboard.availableBalance+=d.amount;
+      m.dashboard.totalDeposit+=d.amount;
+
+      return delay(true);
+    }
+
+    return (
+      await api.post(
+        `/admin/deposits/${id}/verify`
+      )
+    ).data;
+  },
+
+  rejectDeposit:async(id:string)=>{
+
+    if(mockMode){
+
+      const d=m.deposits.find(
+        x=>x._id===id
+      );
+
+      if(!d||d.status!=='PENDING'){
+        throw new Error(
+          'Deposit is no longer pending'
+        );
+      }
+
+      d.status='REJECTED';
+
+      const tx=m.transactions.find(
+        t=>
+          t.reference===d.transactionId&&
+          t.type==='DEPOSIT'
+      );
+
+      if(tx){
+        tx.status='REJECTED';
+      }
+
+      return delay(true);
+    }
+
+    return (
+      await api.post(
+        `/admin/deposits/${id}/reject`
+      )
+    ).data;
+  },
+
+  approveWithdrawal:async(id:string)=>{
+
+    if(mockMode){
+
+      const w=m.withdrawals.find(
+        x=>x._id===id
+      );
+
+      if(!w||w.status!=='PENDING'){
+        throw new Error(
+          'Only a pending withdrawal can be approved'
+        );
+      }
+
+      w.status='APPROVED';
+
+      return delay(true);
+    }
+
+    return (
+      await api.post(
+        `/admin/withdrawals/${id}/approve`
+      )
+    ).data;
+  },
+
+  processWithdrawal:async(id:string)=>{
+
+    if(mockMode){
+
+      const w=m.withdrawals.find(
+        x=>x._id===id
+      );
+
+      if(!w||w.status!=='APPROVED'){
+        throw new Error(
+          'Only an approved withdrawal can move to processing'
+        );
+      }
+
+      w.status='PROCESSING';
+
+      return delay(true);
+    }
+
+    return (
+      await api.post(
+        `/admin/withdrawals/${id}/processing`
+      )
+    ).data;
+  },
+
+  rejectWithdrawal:async(id:string)=>{
+
+    if(mockMode){
+
+      const w=m.withdrawals.find(
+        x=>x._id===id
+      );
+
+      if(!w||w.status!=='PENDING'){
+        throw new Error(
+          'Only a pending withdrawal can be rejected'
+        );
+      }
+
+      w.status='REJECTED';
+
+      m.dashboard.lockedWithdrawalAmount=
+        Math.max(
+          0,
+          (m.dashboard.lockedWithdrawalAmount||0)-
+          w.amount
+        );
+
+      m.dashboard.availableBalance+=
+        w.amount;
+
+      m.transactions
+        .filter(
+          t=>
+            t.reference===w.transactionId||
+            t.reference===`${w.transactionId}-FEE`
+        )
+        .forEach(
+          t=>t.status='REJECTED'
+        );
+
+      return delay(true);
+    }
+
+    return (
+      await api.post(
+        `/admin/withdrawals/${id}/reject`
+      )
+    ).data;
+  },
+
+  completeWithdrawal:async(id:string)=>{
+
+    if(mockMode){
+
+      const w=m.withdrawals.find(
+        x=>x._id===id
+      );
+
+      if(!w||w.status!=='PROCESSING'){
+        throw new Error(
+          'Only a processing withdrawal can be completed'
+        );
+      }
+
+      w.status='COMPLETED';
+
+      m.dashboard.lockedWithdrawalAmount=
+        Math.max(
+          0,
+          (m.dashboard.lockedWithdrawalAmount||0)-
+          w.amount
+        );
+
+      m.dashboard.totalBalance=
+        Math.max(
+          0,
+          (m.dashboard.totalBalance??m.dashboard.balance)-
+          w.amount
+        );
+
+      m.dashboard.balance=
+        m.dashboard.totalBalance;
+
+      m.dashboard.totalWithdrawals+=
+        w.amount;
+
+      m.transactions
+        .filter(
+          t=>
+            t.reference===w.transactionId||
+            t.reference===`${w.transactionId}-FEE`
+        )
+        .forEach(
+          t=>t.status='COMPLETED'
+        );
+
+      return delay(true);
+    }
+
+    return (
+      await api.post(
+        `/admin/withdrawals/${id}/complete`
+      )
+    ).data;
+  },
+
+  createPackage:async(
+    input:Partial<PackagePlan>
+  )=>{
+
+    if(mockMode){
+
+      const amount=Number(input.amount);
+      const cycleDays=Number(
+        input.cycleDays||365
+      );
+      const daily=Number(
+        input.incomeConfiguration?.daily
+      );
+
+      if(
+        !input.name?.trim()||
+        !Number.isFinite(amount)||
+        amount<=0||
+        !Number.isInteger(cycleDays)||
+        cycleDays<=0||
+        !Number.isFinite(daily)||
+        daily<0
+      ){
+        throw new Error(
+          'Invalid package configuration'
+        );
+      }
+
+      const created:PackagePlan={
+        _id:nowId('p'),
+        name:input.name.trim(),
+        amount,
+        cycleDays,
+        incomeConfiguration:{
+          daily,
+          total:Number(
+            input.incomeConfiguration?.total??
+            daily*cycleDays
+          )
+        },
+        description:String(
+          input.description||''
+        ),
+        image:input.image,
+        status:input.status||'ACTIVE',
+        isActive:true,
+        sortOrder:Number(
+          input.sortOrder||0
+        )
+      };
+
+      m.packages.push(created);
+
+      return delay(created);
+    }
+
+    return (
+      await api.post(
+        '/admin/packages',
+        input
+      )
+    ).data.package;
+  },
+
+  updatePackage:async(
+    id:string,
+    input:Partial<PackagePlan>
+  )=>{
+
+    if(mockMode){
+
+      const p=m.packages.find(
+        x=>x._id===id
+      );
+
+      if(!p){
+        throw new Error(
+          'Package not found'
+        );
+      }
+
+      const amount=Number(
+        input.amount??p.amount
+      );
+
+      const cycleDays=Number(
+        input.cycleDays??p.cycleDays
+      );
+
+      const daily=Number(
+        input.incomeConfiguration?.daily??
+        p.incomeConfiguration.daily
+      );
+
+      if(
+        !input.name?.trim()&&
+        !p.name||
+        !Number.isFinite(amount)||
+        amount<=0||
+        !Number.isInteger(cycleDays)||
+        cycleDays<=0||
+        !Number.isFinite(daily)||
+        daily<0
+      ){
+        throw new Error(
+          'Invalid package configuration'
+        );
+      }
+
+      Object.assign(
+        p,
+        input,
+        {
+          amount,
+          cycleDays,
+          name:
+            input.name?.trim()||
+            p.name,
+          incomeConfiguration:{
+            ...p.incomeConfiguration,
+            ...input.incomeConfiguration,
+            daily
+          }
+        }
+      );
+
+      return delay(p);
+    }
+
+    return (
+      await api.patch(
+        `/admin/packages/${id}`,
+        input
+      )
+    ).data.package;
+  },
+
+  archivePackage:async(id:string)=>{
+
+    if(mockMode){
+
+      const p=m.packages.find(
+        x=>x._id===id
+      );
+
+      if(!p){
+        throw new Error(
+          'Package not found'
+        );
+      }
+
+      p.status='ARCHIVED';
+      p.isActive=false;
+
+      return delay(true);
+    }
+
+    return (
+      await api.delete(
+        `/admin/packages/${id}`
+      )
+    ).data;
+  },
+
+  createPaymentMethod:async(
+    input:Partial<PaymentMethod>
+  )=>{
+
+    if(mockMode){
+
+      const created:PaymentMethod={
+        _id:nowId('pm'),
+        code:String(
+          input.code||
+          nowId('method')
+        ).toLowerCase(),
+        name:String(
+          input.name||
+          'Custom Method'
+        ),
+        status:input.status||'ACTIVE',
+        instructions:String(
+          input.instructions||''
+        ),
+        accountDetails:
+          input.accountDetails,
+        minAmount:Number(
+          input.minAmount||0
+        ),
+        displayOrder:Number(
+          input.displayOrder||0
+        ),
+        verificationMode:
+          input.verificationMode||
+          'MANUAL'
+      };
+
+      m.methods.push(created);
+
+      return delay(created);
+    }
+
+    return (
+      await api.post(
+        '/admin/payment-methods',
+        input
+      )
+    ).data.method;
+  },
+
+  updatePaymentMethod:async(
+    id:string,
+    input:Partial<PaymentMethod>
+  )=>{
+
+    if(mockMode){
+
+      const p=m.methods.find(
+        x=>x._id===id
+      );
+
+      if(!p){
+        throw new Error(
+          'Payment method not found'
+        );
+      }
+
+      Object.assign(p,input);
+
+      return delay(p);
+    }
+
+    return (
+      await api.patch(
+        `/admin/payment-methods/${id}`,
+        input
+      )
+    ).data.method;
+  },
+
+  createPromo:async(
+    input:Partial<PromoCode>
+  )=>{
+
+    if(mockMode){
+
+      const created:PromoCode={
+        _id:nowId('promo'),
+        code:String(
+          input.code||
+          'NEWPROMO'
+        ).toUpperCase(),
+        rewardType:
+          input.rewardType||
+          'FIXED',
+        rewardValue:Number(
+          input.rewardValue||0
+        ),
+        usageLimit:
+          input.usageLimit,
+        perUserLimit:
+          input.perUserLimit,
+        expiresAt:
+          input.expiresAt,
+        status:
+          input.status||
+          'ACTIVE',
+        minRequirement:
+          input.minRequirement
+      };
+
+      m.promoCodes.push(created);
+
+      return delay(created);
+    }
+
+    return (
+      await api.post(
+        '/admin/promo',
+        input
+      )
+    ).data.promo;
+  },
+
+  updatePromo:async(
+    id:string,
+    input:Partial<PromoCode>
+  )=>{
+
+    if(mockMode){
+
+      const p=m.promoCodes.find(
+        x=>x._id===id
+      );
+
+      if(!p){
+        throw new Error(
+          'Promo code not found'
+        );
+      }
+
+      Object.assign(p,input);
+
+      return delay(p);
+    }
+
+    return (
+      await api.patch(
+        `/admin/promo/${id}`,
+        input
+      )
+    ).data.promo;
+  },
+
+  createReward:async(
+    input:Partial<RewardTier>
+  )=>{
+
+    if(mockMode){
+
+      const created:RewardTier={
+        _id:nowId('r'),
+        threshold:Number(
+          input.threshold||0
+        ),
+        reward:Number(
+          input.reward||0
+        ),
+        status:
+          input.status||
+          'ACTIVE',
+        sortOrder:Number(
+          input.sortOrder||0
+        )
+      };
+
+      m.rewards.push(created);
+
+      return delay(created);
+    }
+
+    return (
+      await api.post(
+        '/admin/rewards',
+        input
+      )
+    ).data.reward;
+  },
+
+  updateReward:async(
+    id:string,
+    input:Partial<RewardTier>
+  )=>{
+
+    if(mockMode){
+
+      const r=m.rewards.find(
+        x=>x._id===id
+      );
+
+      if(!r){
+        throw new Error(
+          'Reward not found'
+        );
+      }
+
+      Object.assign(r,input);
+
+      return delay(r);
+    }
+
+    return (
+      await api.patch(
+        `/admin/rewards/${id}`,
+        input
+      )
+    ).data.reward;
+  },
+
+  updateSettings:async(
+    input:Partial<PlatformSettings>
+  )=>{
+
+    if(mockMode){
+
+      Object.assign(
+        m.settings,
+        input
+      );
+
+      return delay(m.settings);
+    }
+
+    return (
+      await api.patch(
+        '/admin/settings',
+        input
+      )
+    ).data;
+  }
+};
+
+export const apiServices={
+  authService,
+  userService,
+  packageService,
+  packagePurchaseService,
+  depositService,
+  withdrawalService,
+  transactionService,
+  teamService,
+  rewardService,
+  promoService,
+  paymentMethodService,
+  notificationService,
+  supportService,
+  settingsService,
+  dashboardService,
+  adminService
+};
