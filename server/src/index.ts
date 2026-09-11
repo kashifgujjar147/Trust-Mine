@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -14,6 +14,7 @@ import path from 'path';
 import {fileURLToPath} from 'url';
 
 const app = express();
+app.set('trust proxy', 1);
 
 app.use(helmet());
 
