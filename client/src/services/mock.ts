@@ -1,0 +1,29 @@
+﻿import {AdminDashboardData,DashboardData,Deposit,Notification,PackagePlan,PackagePurchase,PaymentMethod,PlatformSettings,PromoCode,RewardTier,SupportTicket,TeamMember,Transaction,User,Withdrawal} from '../types';
+const now=Date.now(); const iso=(n:number)=>new Date(now+n).toISOString();
+export const mockUser:User={_id:'u1',userId:'TM10001',fullName:'Demo User',username:'demo_user',email:'user@trustmine.demo',phone:'+92 300 0000000',referralCode:'TM-DEMO',role:'USER',status:'ACTIVE',createdAt:iso(-30*864e5)};
+export const mockAdmin:User={...mockUser,_id:'a1',userId:'TM00001',fullName:'Demo Admin',username:'admin',email:'admin@trustmine.demo',role:'ADMIN'};
+export const packages:PackagePlan[]=[
+['Starter House',2,.08],['Dream House',5,.20],['Family House',10,.40],['Modern House',20,.80],['Luxury House',50,2],['Premium Residence',100,4],['Grand Residence',250,10],['Royal Residence',500,20]
+].map(([name,amount,daily],i)=>({_id:`p${i+1}`,name:String(name),amount:Number(amount),cycleDays:365,incomeConfiguration:{daily:Number(daily),total:Number(daily)*365},description:'Configurable package plan for the TRUST MINE demo environment.',status:'ACTIVE',isActive:true,sortOrder:i+1,createdAt:iso(-i*864e5),updatedAt:iso(-i*864e5)}));
+export const methods:PaymentMethod[]=[
+{_id:'pm1',code:'easypaisa',name:'Easypaisa',status:'ACTIVE',instructions:'Send the exact amount to the configured merchant/account and enter the provider reference.',accountDetails:'Demo merchant details â€” configure in Admin.',minAmount:2,displayOrder:1,verificationMode:'MANUAL'},
+{_id:'pm2',code:'bep20',name:'BEP20',status:'ACTIVE',instructions:'Send the exact token amount on BNB Smart Chain. Submit the transaction hash for server-side verification.',accountDetails:'0xb33a951C1de63b01Ce03c185E2E7d20463703592',minAmount:2,displayOrder:2,verificationMode:'MANUAL'},
+{_id:'pm3',code:'bank',name:'Bank Transfer',status:'ACTIVE',instructions:'Transfer the exact amount and submit the bank reference. An authorized reviewer verifies it.',accountDetails:'Demo bank details â€” configure in Admin.',minAmount:2,displayOrder:3,verificationMode:'MANUAL'},
+{_id:'pm4',code:'custom',name:'Custom Method',status:'ACTIVE',instructions:'Admin-configurable payment instructions.',accountDetails:'Configure this method in Admin.',minAmount:2,displayOrder:4,verificationMode:'MANUAL'}];
+export const rewards:RewardTier[]=[50,100,200,500].map((threshold,i)=>({_id:`r${i}`,threshold,reward:[2,5,10,25][i],status:'ACTIVE',sortOrder:i+1}));
+export const transactions:Transaction[]=[{_id:'t1',transactionId:'DEP-DEMO-001',type:'DEPOSIT',amount:50,fee:0,netAmount:50,status:'COMPLETED',reference:'DEMO-REF',description:'Demo deposit',createdAt:iso(-2*864e5)},{_id:'t2',transactionId:'INC-DEMO-001',type:'PACKAGE_INCOME',amount:2,fee:0,netAmount:2,status:'COMPLETED',description:'Demo package income illustration',createdAt:iso(-864e5)},{_id:'t3',transactionId:'COM-DEMO-001',type:'COMMISSION',amount:1.5,fee:0,netAmount:1.5,status:'COMPLETED',description:'Demo referral commission',createdAt:iso(-5e6)}];
+export const deposits:Deposit[]=[{_id:'d1',transactionId:'DEP-DEMO-001',amount:50,status:'COMPLETED',method:'BEP20',packageId:'p5',packageName:'Luxury House',reference:'DEMO-REF',createdAt:iso(-2*864e5)},{_id:'d2',transactionId:'DEP-DEMO-002',amount:10,status:'PENDING',method:'Easypaisa',packageId:'p3',packageName:'Family House',reference:'PENDING-REF',createdAt:iso(-4e5)}];
+export const purchases:PackagePurchase[]=[{_id:'pp1',packageId:'p5',packageName:'Luxury House',packageAmount:50,status:'ACTIVE',activatedAt:iso(-20*36e5),cycleStart:iso(-36e5),cycleEnd:iso(-36e5+365*24*36e5),currentCycle:1,accruedAmount:2,nextProcessAt:iso(23*36e5)}];
+export const withdrawals:Withdrawal[]=[{_id:'w1',transactionId:'WDR-DEMO-001',amount:20,fee:1.6,netAmount:18.4,method:'BEP20',account:'0xâ€¢â€¢â€¢â€¢â€¢â€¢demo',accountHolderName:'Demo Member',status:'PENDING',createdAt:iso(-6e5)}];
+export const team:TeamMember[]=[1,2,3,4,1].map((level,i)=>({_id:`tm${i}`,userId:`TM10${i+2}`,name:`Team Member ${i+1}`,level,status:i===3?'INACTIVE':'ACTIVE',joinedAt:iso(-(i+2)*864e5),volume:100*(i+1),commission:[10,2,1,1][level-1]??1}));
+export const notifications:Notification[]=[{_id:'n1',title:'Welcome to TRUST MINE',message:'Your demo workspace is ready.',read:false,createdAt:iso(-2e5),type:'SYSTEM'},{_id:'n2',title:'Package activated',message:'Your demo Luxury House package is active.',read:true,createdAt:iso(-2*864e5),type:'PACKAGE'}];
+export const tickets:SupportTicket[]=[];
+export const promoUsage:{code:string;userId:string;usageKey:string}[]=[];
+export const claimedRewardIds:string[]=[];
+export const promoCodes:PromoCode[]=[{_id:'promo1',code:'WELCOME10',rewardType:'FIXED',rewardValue:10,usageLimit:100,perUserLimit:1,expiresAt:iso(30*864e5),status:'ACTIVE'}];
+export const settings:PlatformSettings={currency:'USD',minimumDeposit:2,minimumWithdrawal:1,withdrawalFeePercent:8,commissionRates:[10,2,1,1],cycleIntervalHours:24,packageDurationDays:365,rewardTiers:rewards,maintenanceMode:false,supportEmail:'support@example.com',supportPhone:'+92 300 0000000'};
+export const dashboard:DashboardData={balance:53.5,totalBalance:53.5,availableBalance:33.5,lockedWithdrawalAmount:20,totalDeposit:50,income:3.5,totalWithdrawals:0,activePackages:1,todayIncome:2,pendingWithdrawal:20,team:5,commission:1.5,rewards:0,activePackagePurchases:purchases,transactions};
+export const adminDashboard:AdminDashboardData={users:128,activeUsers:112,deposits:12540,pendingDeposits:7,completedDeposits:93,withdrawals:4820,pendingWithdrawals:4,packagePurchases:176,activePackages:94,incomeDistributed:2310,commissionDistributed:460,rewardsDistributed:125};
+
+
+

@@ -1,0 +1,316 @@
+﻿import {FormEvent,useEffect,useMemo,useState} from 'react';
+import {supportService} from '../services';
+import type {SupportMessage,SupportTicket} from '../types';
+
+export default function LiveChatWidget(){
+
+  const [open,setOpen]=useState(false);
+  const [tickets,setTickets]=useState<SupportTicket[]>([]);
+  const [ticket,setTicket]=useState<SupportTicket|null>(null);
+  const [messages,setMessages]=useState<SupportMessage[]>([]);
+  const [message,setMessage]=useState('');
+  const [subject,setSubject]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [sending,setSending]=useState(false);
+  const [error,setError]=useState('');
+
+  const activeTicket=ticket;
+
+  const unread=useMemo(
+    ()=>tickets.reduce((sum,t)=>sum+(Number(t.unreadForUser)||0),0),
+    [tickets]
+  );
+
+  const loadTickets=async()=>{
+    try{
+      const data=await supportService.getTickets();
+      setTickets(data||[]);
+
+      if(activeTicket){
+        const fresh=(data||[]).find((x:SupportTicket)=>x._id===activeTicket._id);
+        if(fresh) setTicket(fresh);
+      }
+    }catch(e){
+      setError((e as Error).message||'Unable to load support conversations.');
+    }
+  };
+
+  const loadMessages=async(id:string)=>{
+    try{
+      const data=await supportService.getMessages(id);
+      setMessages(Array.isArray(data) ? data : (data?.messages ?? []));
+      await supportService.markRead(id);
+      await loadTickets();
+    }catch(e){
+      setError((e as Error).message||'Unable to load messages.');
+    }
+  };
+
+  useEffect(()=>{
+    if(!open) return;
+
+    let alive=true;
+
+    const first=async()=>{
+      setLoading(true);
+      setError('');
+      try{
+        const data=await supportService.getTickets();
+        if(!alive) return;
+        setTickets(data||[]);
+      }catch(e){
+        if(alive) setError((e as Error).message||'Unable to load support.');
+      }finally{
+        if(alive) setLoading(false);
+      }
+    };
+
+    first();
+
+    const timer=window.setInterval(()=>{
+      if(!alive) return;
+      loadTickets();
+      if(activeTicket && activeTicket.status!=='RESOLVED'){
+        loadMessages(activeTicket._id);
+      }
+    },3000);
+
+    return ()=>{
+      alive=false;
+      window.clearInterval(timer);
+    };
+  },[open,activeTicket?._id]);
+
+  const openTicket=async(t:SupportTicket)=>{
+    setTicket(t);
+    setError('');
+    await loadMessages(t._id);
+  };
+
+  const createConversation=async(e:FormEvent)=>{
+    e.preventDefault();
+
+    if(!subject.trim() || !message.trim()){
+      setError('Subject and message are required.');
+      return;
+    }
+
+    setSending(true);
+    setError('');
+
+    try{
+      const created=await supportService.createTicket({
+        subject:subject.trim(),
+        message:message.trim()
+      });
+
+      setTickets(x=>[created,...x]);
+      setTicket(created);
+      setSubject('');
+      setMessage('');
+
+      const data=await supportService.getMessages(created._id);
+      setMessages(Array.isArray(data) ? data : (data?.messages ?? []));
+    }catch(e){
+      setError((e as Error).message||'Unable to create conversation.');
+    }finally{
+      setSending(false);
+    }
+  };
+
+  const send=async(e:FormEvent)=>{
+    e.preventDefault();
+
+    if(!activeTicket || !message.trim() || activeTicket.status==='RESOLVED') return;
+
+    setSending(true);
+    setError('');
+
+    try{
+      const sent=await supportService.sendMessage(
+        activeTicket._id,
+        message.trim()
+      );
+
+      setMessages(x=>[...x,sent]);
+      setMessage('');
+      await loadTickets();
+    }catch(e){
+      setError((e as Error).message||'Unable to send message.');
+    }finally{
+      setSending(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className="live-chat-fab"
+        onClick={()=>setOpen(x=>!x)}
+        aria-label="Open support chat"
+      >
+        <span className="live-chat-fab-icon">💬</span>
+        {unread>0 && <span className="live-chat-badge">{unread>99?'99+':unread}</span>}
+      </button>
+
+      {open && (
+        <div className="live-chat-window">
+
+          <div className="live-chat-header">
+            <div>
+              <strong>Live Support</strong>
+              <span>Usually replies shortly</span>
+            </div>
+
+            <button
+              type="button"
+              className="live-chat-close"
+              onClick={()=>setOpen(false)}
+            >
+              ×
+            </button>
+          </div>
+
+          {error && <div className="live-chat-error">{error}</div>}
+
+          {!activeTicket ? (
+            <div className="live-chat-body">
+
+              {loading ? (
+                <div className="live-chat-empty">Loading conversations...</div>
+              ) : tickets.length>0 ? (
+                <>
+                  <div className="live-chat-section-title">Your conversations</div>
+
+                  <div className="live-chat-ticket-list">
+                    {tickets.map(t=>(
+                      <button
+                        type="button"
+                        className="live-chat-ticket"
+                        key={t._id}
+                        onClick={()=>openTicket(t)}
+                      >
+                        <div>
+                          <strong>{t.subject}</strong>
+                          <span>{t.lastMessagePreview||t.message}</span>
+                        </div>
+
+                        <div className="live-chat-ticket-meta">
+                          <small>{t.status}</small>
+                          {(t.unreadForUser||0)>0 &&
+                            <b>{t.unreadForUser}</b>
+                          }
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn live-chat-new"
+                    onClick={()=>{
+                      setTicket(null);
+                      setMessages([]);
+                    }}
+                  >
+                    Start new conversation
+                  </button>
+                </>
+              ) : (
+                <form onSubmit={createConversation} className="live-chat-form">
+                  <div className="live-chat-section-title">Chat with support</div>
+
+                  <input
+                    className="field-input"
+                    placeholder="Subject"
+                    value={subject}
+                    onChange={e=>setSubject(e.target.value)}
+                    maxLength={150}
+                  />
+
+                  <textarea
+                    className="field-input live-chat-textarea"
+                    placeholder="How can we help?"
+                    value={message}
+                    onChange={e=>setMessage(e.target.value)}
+                    maxLength={5000}
+                  />
+
+                  <button className="btn" disabled={sending}>
+                    {sending?'Sending...':'Start chat'}
+                  </button>
+                </form>
+              )}
+
+            </div>
+          ) : (
+            <>
+
+              <div className="live-chat-conversation-top">
+                <button
+                  type="button"
+                  onClick={()=>setTicket(null)}
+                  className="live-chat-back"
+                >
+                  ←
+                </button>
+
+                <div>
+                  <strong>{activeTicket.subject}</strong>
+                  <span>{activeTicket.status}</span>
+                </div>
+              </div>
+
+              <div className="live-chat-messages">
+                {messages.length===0 ? (
+                  <div className="live-chat-empty">No messages yet.</div>
+                ) : (
+                  messages.map(m=>(
+                    <div
+                      key={m._id}
+                      className={`live-chat-message ${m.senderRole==='USER'?'mine':'support'}`}
+                    >
+                      <div>{m.message}</div>
+                      <small>
+                        {new Date(m.createdAt).toLocaleTimeString([],{
+                          hour:'2-digit',
+                          minute:'2-digit'
+                        })}
+                      </small>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {activeTicket.status==='RESOLVED' ? (
+                <div className="live-chat-resolved">
+                  This conversation has been resolved.
+                </div>
+              ) : (
+                <form onSubmit={send} className="live-chat-compose">
+                  <textarea
+                    className="field-input live-chat-textarea"
+                    placeholder="Write a message..."
+                    value={message}
+                    onChange={e=>setMessage(e.target.value)}
+                    maxLength={5000}
+                  />
+
+                  <button className="btn" disabled={sending||!message.trim()}>
+                    {sending?'Sending...':'Send'}
+                  </button>
+                </form>
+              )}
+
+            </>
+          )}
+
+        </div>
+      )}
+    </>
+  );
+}
+
+
+
