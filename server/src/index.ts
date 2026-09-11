@@ -25,7 +25,7 @@ app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.map(x => x.replace(/\/$/, '')).includes(origin.replace(/\/$/, ''))) {
+      if (!origin || origin === 'https://trustmineshop.vercel.app' || allowedOrigins.map(x => x.replace(/\/$/, '')).includes(origin.replace(/\/$/, '')))  {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
