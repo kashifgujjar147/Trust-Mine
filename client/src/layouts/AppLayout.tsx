@@ -31,18 +31,24 @@ export default function AppLayout(){
   const nav=useNavigate();
 
   useEffect(()=>{
-    if(user && whatsappChannel){
-      setShowWhatsAppJoin(true);
-    }else{
+    const impersonating=Boolean(
+      sessionStorage.getItem('tm_admin_token') &&
+      sessionStorage.getItem('tm_impersonated_user')
+    );
+    setIsImpersonating(impersonating);
+
+    if(!user || !whatsappChannel || sessionStorage.getItem('tm_whatsapp_join_seen')==='1'){
       setShowWhatsAppJoin(false);
+      return;
     }
 
-    setIsImpersonating(
-      Boolean(
-        sessionStorage.getItem('tm_admin_token') &&
-        sessionStorage.getItem('tm_impersonated_user')
-      )
-    );
+    const timer=window.setTimeout(()=>{
+      if(sessionStorage.getItem('tm_whatsapp_join_seen')!=='1'){
+        setShowWhatsAppJoin(true);
+      }
+    },350);
+
+    return ()=>window.clearTimeout(timer);
   },[user]);
 
   const returnToAdmin=()=>{
@@ -292,6 +298,7 @@ export default function AppLayout(){
               href={whatsappChannel}
               target="_blank"
               rel="noreferrer"
+              onClick={()=>sessionStorage.setItem('tm_whatsapp_join_seen','1')}
               style={{
                 display:'flex',
                 alignItems:'center',
@@ -315,7 +322,10 @@ export default function AppLayout(){
 
             <button
               type="button"
-              onClick={()=>setShowWhatsAppJoin(false)}
+              onClick={()=>{
+  sessionStorage.setItem('tm_whatsapp_join_seen','1');
+  setShowWhatsAppJoin(false);
+}}
               style={{
                 width:'100%',
                 padding:'13px 18px',
