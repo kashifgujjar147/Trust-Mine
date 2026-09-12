@@ -1,4 +1,4 @@
-import crypto from 'node:crypto';
+﻿import crypto from 'node:crypto';
 import mongoose, {ClientSession} from 'mongoose';
 import { env } from '../config/env.js';
 import {Transaction,Wallet,User,Withdrawal,PackagePurchase} from '../models/index.js';
@@ -125,16 +125,16 @@ export async function ledger(data:LedgerInput,session?:ClientSession){
   }
 }
 export async function balanceSnapshot(userId:string){
-  const w=await ensureWallet(userId);
+  const [w,packageCapital]=await Promise.all([
+    ensureWallet(userId),
+    activePackageCapital(userId)
+  ]);
 
   const total=
     Number(w?.totalBalance||0);
 
   const locked=
     Number(w?.lockedWithdrawalAmount||0);
-
-  const packageCapital=
-    await activePackageCapital(userId);
 
   const availableBalance=
     Math.max(
@@ -159,9 +159,15 @@ export async function balanceFor(userId:string){return (await balanceSnapshot(us
 export async function initializeWallets(){
   const users=await User.find().select('_id').lean();
 
-  for(const user of users){
-    await withMongoTransaction(
-      session=>rebuildWallet(String(user._id),session)
+  const batchSize = 20;
+  for(let i=0;i<users.length;i+=batchSize){
+    const batch=users.slice(i,i+batchSize);
+    await Promise.all(
+      batch.map(user =>
+        withMongoTransaction(
+          session=>rebuildWallet(String(user._id),session)
+        )
+      )
     );
   }
 
@@ -171,3 +177,4 @@ export async function initializeWallets(){
     Withdrawal.syncIndexes()
   ]);
 }
+

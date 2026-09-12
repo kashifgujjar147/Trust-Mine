@@ -9,7 +9,7 @@ export const Withdrawal=model('Withdrawal',new Schema({transactionId:{type:Strin
 export const Transaction=model('Transaction',new Schema({transactionId:{type:String,unique:true},userId:{type:Schema.Types.ObjectId,ref:'User',required:true,index:true},type:{type:String,enum:['DEPOSIT','PACKAGE_PURCHASE','PACKAGE_INCOME','WITHDRAWAL','WITHDRAWAL_FEE','COMMISSION','REWARD','PROMO_REWARD','ADJUSTMENT','REFUND','REVERSAL'],required:true,index:true},amount:{type:Number,required:true},fee:{type:Number,default:0},netAmount:{type:Number},status:{type:String,index:true},reference:{type:String,index:true},description:String,relatedEntity:String,metadata:Schema.Types.Mixed},{...opts,indexes:[{userId:1,createdAt:-1},{type:1,status:1,createdAt:-1},{reference:1},{'metadata.idempotencyKey':1,unique:true,sparse:true}]}));
 export const Commission=model('Commission',new Schema({userId:{type:Schema.Types.ObjectId,ref:'User',required:true,index:true},sourceUserId:{type:Schema.Types.ObjectId,ref:'User',required:true,index:true},level:{type:Number,required:true},rate:{type:Number,required:true},amount:{type:Number,required:true},transactionId:{type:String,index:true}},{...opts,indexes:[{userId:1,level:1},{sourceUserId:1,level:1,transactionId:1,unique:true}]}));
 export const Reward=model('Reward',new Schema({threshold:{type:Number,required:true},reward:{type:Number,required:true},status:{type:String,default:'ACTIVE',index:true},sortOrder:Number},{...opts,indexes:[{status:1,threshold:1},{threshold:1,unique:true}]}));
-export const PromoCode=model('PromoCode',new Schema({code:{type:String,unique:true},rewardType:String,rewardValue:Number,usageLimit:Number,perUserLimit:Number,minRequirement:{type:Number,default:0},expiresAt:Date,usageCount:{type:Number,default:0,min:0},status:{type:String,default:'ACTIVE',index:true}},{...opts}));
+export const PromoCode=model('PromoCode',new Schema({code:{type:String,unique:true},rewardType:String,rewardValue:Number,usageLimit:Number,perUserLimit:Number,minRequirement:{type:Number,default:0},expiresAt:Date,usageCount:{type:Number,default:0,min:0},status:{type:String,default:'ACTIVE',index:true}},{...opts,indexes:[{createdAt:-1}]}));
 export const PromoUsage=model('PromoUsage',new Schema({promoCodeId:{type:Schema.Types.ObjectId,ref:'PromoCode',index:true},userId:{type:Schema.Types.ObjectId,ref:'User',index:true},reward:Number,usageKey:{type:String}},{...opts,indexes:[{promoCodeId:1,userId:1},{usageKey:1,unique:true,sparse:true}]}));
 export const PromoUserCounter=model('PromoUserCounter',new Schema({promoCodeId:{type:Schema.Types.ObjectId,ref:'PromoCode',required:true},userId:{type:Schema.Types.ObjectId,ref:'User',required:true},count:{type:Number,default:0,min:0}},{...opts,indexes:[{promoCodeId:1,userId:1,unique:true}]}));
 export const RewardClaim=model('RewardClaim',new Schema({userId:{type:Schema.Types.ObjectId,ref:'User',required:true},rewardId:{type:Schema.Types.ObjectId,ref:'Reward',required:true},reference:{type:String,required:true}},{...opts,indexes:[{userId:1,rewardId:1,unique:true},{reference:1,unique:true}]}));
@@ -27,7 +27,8 @@ export const SupportTicket=model('SupportTicket',new Schema({
 },{...opts,indexes:[
   {userId:1,createdAt:-1},
   {status:1,lastMessageAt:-1},
-  {unreadForAdmin:1,lastMessageAt:-1}
+  {unreadForAdmin:1,lastMessageAt:-1},
+  {unreadForAdmin:1,lastMessageAt:-1,createdAt:-1}
 ]}));
 
 export const SupportMessage=model('SupportMessage',new Schema({

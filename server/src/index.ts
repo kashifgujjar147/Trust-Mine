@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -8,17 +8,14 @@ import { router } from './routes/index.js';
 import { notFound } from './middleware/notFound.js';
 import { startCycleJob } from './jobs/cycleJob.js';
 import { initializeWallets } from './services/ledger.js';
-import {paymentProofUpload} from './middleware/paymentProofUpload.js';
 import mongoose from 'mongoose';
-import path from 'path';
-import {fileURLToPath} from 'url';
 
 const app = express();
 app.set('trust proxy', 1);
 
 app.use(helmet());
 
-app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
+
 
 
 
@@ -100,6 +97,8 @@ const shutdown = async (signal:string) => {
 };
 process.once('SIGINT',()=>void shutdown('SIGINT'));
 process.once('SIGTERM',()=>void shutdown('SIGTERM'));
+
+
 
 
 

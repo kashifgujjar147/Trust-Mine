@@ -13,3 +13,6 @@ dist/
 *-backup-*
 backup-*/
 _backup-*/
+
+# Payment proof uploads
+server/uploads/

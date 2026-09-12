@@ -1,5 +1,8 @@
 import { SystemSetting, Reward } from '../models/index.js';
 
+let settingsCache: any = null;
+let settingsCacheExpiresAt = 0;
+
 export const defaults = {
   currency: 'USD',
   minimumDeposit: 2,
@@ -39,7 +42,15 @@ export const defaults = {
   supportPhone: '+1 000 000 0000',
 };
 
+const SETTINGS_CACHE_MS = 30000;
+
 export async function getSettings() {
+  if (
+    settingsCache &&
+    Date.now() < settingsCacheExpiresAt
+  ) {
+    return settingsCache;
+  }
   const [rows, rewardTiers] = await Promise.all([
     SystemSetting.find().lean(),
     Reward.find({
@@ -72,6 +83,10 @@ export async function getSettings() {
     }));
   }
 
+  settingsCache = out;
+  settingsCacheExpiresAt =
+    Date.now() + SETTINGS_CACHE_MS;
+
   return out;
 }
 
@@ -79,7 +94,7 @@ export async function setSetting(
   key: string,
   value: unknown
 ) {
-  return SystemSetting.findOneAndUpdate(
+  settingsCache = null; settingsCacheExpiresAt = 0; return SystemSetting.findOneAndUpdate(
     { key },
     { value },
     {

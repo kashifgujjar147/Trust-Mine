@@ -1,4 +1,5 @@
 ﻿import { hash ,sign} from '../utils/auth.js';
+import {paymentProofExists} from '../services/paymentProofStorage.js';
 
 import { Request, Response } from 'express';
 import mongoose, {ClientSession} from 'mongoose';
@@ -58,6 +59,11 @@ import {
 import { isWithdrawalProcessingWindow, claimWithdrawalSlot } from '../services/withdrawalPolicy.js';
 import { sendTelegramNotification } from '../services/telegramService.js';
 import { env } from '../config/env.js';
+
+
+const ADMIN_DASHBOARD_CACHE_MS = 15000;
+let adminDashboardCache: Record<string, unknown> | null = null;
+let adminDashboardCacheExpiresAt = 0;
 
 
 const sanitize = (
@@ -142,11 +148,7 @@ export async function packages(
 ) {
 
   res.json({
-    packages: await Package.find({
-      status: 'ACTIVE'
-    }).sort({
-      sortOrder: 1
-    })
+    packages: await Package.find({ status: 'ACTIVE' }).limit(100).lean()
   });
 }
 
@@ -193,11 +195,7 @@ export async function methods(
 ) {
 
   res.json({
-    methods: await PaymentMethod.find({
-      status: 'ACTIVE'
-    }).sort({
-      displayOrder: 1
-    })
+    methods: await PaymentMethod.find({ status: 'ACTIVE' }).limit(100).lean()
   });
 }
 
@@ -220,14 +218,8 @@ export async function dashboard(
   const [
     settings,
     wallet,
-    activePackages,
     transactions,
-    depAgg,
-    withAgg,
-    incomeAgg,
-    todayAgg,
-    commAgg,
-    rewardAgg,
+    transactionSummary,
     pendingWith,
     team,
     purchases
@@ -239,142 +231,135 @@ export async function dashboard(
       userId
     ),
 
-    PackagePurchase.countDocuments({
-      userId,
-      status: 'ACTIVE'
-    }),
-
     Transaction.find({
       userId
     })
       .sort({
         createdAt: -1
       })
-      .limit(20),
+      .limit(20).lean(),
 
     Transaction.aggregate([
       {
         $match: {
-          userId: oid,
-          type: 'DEPOSIT',
-          status: 'COMPLETED'
+          userId: oid
         }
       },
       {
         $group: {
           _id: null,
-          total: {
-            $sum: '$amount'
-          }
-        }
-      }
-    ]),
 
-    Transaction.aggregate([
-      {
-        $match: {
-          userId: oid,
-          type: 'WITHDRAWAL',
-          status: {
-            $in: [
-              'APPROVED',
-              'COMPLETED'
-            ]
-          }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          total: {
-            $sum: '$amount'
-          }
-        }
-      }
-    ]),
-
-    Transaction.aggregate([
-      {
-        $match: {
-          userId: oid,
-          type: 'PACKAGE_INCOME',
-          status: 'COMPLETED'
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          total: {
-            $sum: '$amount'
-          }
-        }
-      }
-    ]),
-
-    Transaction.aggregate([
-      {
-        $match: {
-          userId: oid,
-          type: 'PACKAGE_INCOME',
-          status: 'COMPLETED',
-          createdAt: {
-            $gte: new Date(
-              new Date().setHours(
-                0,
-                0,
-                0,
+          deposit: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$type', 'DEPOSIT'] },
+                    { $eq: ['$status', 'COMPLETED'] }
+                  ]
+                },
+                '$amount',
                 0
-              )
-            )
-          }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          total: {
-            $sum: '$amount'
-          }
-        }
-      }
-    ]),
-
-    Transaction.aggregate([
-      {
-        $match: {
-          userId: oid,
-          type: 'COMMISSION',
-          status: 'COMPLETED'
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          total: {
-            $sum: '$amount'
-          }
-        }
-      }
-    ]),
-
-    Transaction.aggregate([
-      {
-        $match: {
-          userId: oid,
-          type: {
-            $in: [
-              'REWARD',
-              'PROMO_REWARD'
-            ]
+              ]
+            }
           },
-          status: 'COMPLETED'
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          total: {
-            $sum: '$amount'
+
+          withdrawal: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$type', 'WITHDRAWAL'] },
+                    {
+                      $in: [
+                        '$status',
+                        ['APPROVED', 'COMPLETED']
+                      ]
+                    }
+                  ]
+                },
+                '$amount',
+                0
+              ]
+            }
+          },
+
+          income: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$type', 'PACKAGE_INCOME'] },
+                    { $eq: ['$status', 'COMPLETED'] }
+                  ]
+                },
+                '$amount',
+                0
+              ]
+            }
+          },
+
+          todayIncome: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$type', 'PACKAGE_INCOME'] },
+                    { $eq: ['$status', 'COMPLETED'] },
+                    {
+                      $gte: [
+                        '$createdAt',
+                        new Date(
+                          new Date().setHours(
+                            0,
+                            0,
+                            0,
+                            0
+                          )
+                        )
+                      ]
+                    }
+                  ]
+                },
+                '$amount',
+                0
+              ]
+            }
+          },
+
+          commission: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$type', 'COMMISSION'] },
+                    { $eq: ['$status', 'COMPLETED'] }
+                  ]
+                },
+                '$amount',
+                0
+              ]
+            }
+          },
+
+          rewards: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    {
+                      $in: [
+                        '$type',
+                        ['REWARD', 'PROMO_REWARD']
+                      ]
+                    },
+                    { $eq: ['$status', 'COMPLETED'] }
+                  ]
+                },
+                '$amount',
+                0
+              ]
+            }
           }
         }
       }
@@ -410,9 +395,7 @@ export async function dashboard(
     PackagePurchase.find({
       userId,
       status: 'ACTIVE'
-    }).populate(
-      'packageId'
-    )
+    }).populate('packageId').lean()
   ]);
 
   res.json({
@@ -433,18 +416,18 @@ export async function dashboard(
     wallet.lockedPackageCapital,
 
     totalDeposit:
-      depAgg[0]?.total || 0,
+      transactionSummary[0]?.deposit || 0,
 
     totalWithdrawals:
-      withAgg[0]?.total || 0,
+      transactionSummary[0]?.withdrawal || 0,
 
     income:
-      incomeAgg[0]?.total || 0,
+      transactionSummary[0]?.income || 0,
 
-    activePackages,
+    activePackages: purchases.length,
 
     todayIncome:
-      todayAgg[0]?.total || 0,
+      transactionSummary[0]?.todayIncome || 0,
 
     pendingWithdrawal:
       pendingWith[0]?.total || 0,
@@ -452,57 +435,24 @@ export async function dashboard(
     team,
 
     commission:
-      commAgg[0]?.total || 0,
+      transactionSummary[0]?.commission || 0,
 
     rewards:
-      rewardAgg[0]?.total || 0,
+      transactionSummary[0]?.rewards || 0,
 
-    activePackagePurchases:
-      purchases.map(
-        (p: any) => {
-          const intervalMs =
-            Math.max(
-              1,
-              Number(settings.cycleIntervalHours || 24)
-            ) * 3600000;
-          const duration =
-            Math.max(
-              1,
-              Number(
-                p.cycleDaysSnapshot ||
-                p.packageId?.cycleDays ||
-                settings.packageDurationDays ||
-                365
-              )
-            );
-          const start =
-            p.cycleStart
-              ? new Date(p.cycleStart)
-              : undefined;
+    activePackagePurchases: purchases.map((p: any) => {
+      const intervalMs = Math.max(1, Number(settings.cycleIntervalHours || 24)) * 3600000;
+      const duration = Math.max(1, Number(p.cycleDaysSnapshot || p.packageId?.cycleDays || settings.packageDurationDays || 365));
+      const start = p.cycleStart ? new Date(p.cycleStart) : undefined;
 
-          return {
-            ...p.toObject(),
-            cycleEnd:
-              start
-                ? new Date(
-                    start.getTime() +
-                    duration * intervalMs
-                  )
-                : p.cycleEnd,
-            cycleDaysSnapshot:
-              p.cycleDaysSnapshot ||
-              p.packageId?.cycleDays ||
-              undefined,
-            packageName:
-              p.packageId?.name ||
-              'Package',
-            packageId: String(
-              p.packageId?._id ||
-              p.packageId
-            )
-          };
-        }
-      ),
+      return {
+        ...p,
+        cycleEnd: start ? new Date(start.getTime() + duration * intervalMs) : p.cycleEnd,
+        cycleDaysSnapshot: p.cycleDaysSnapshot || p.packageId?.cycleDays || undefined,
+        packageName: p.packageId?.name || 'Package',
+        packageId: String(p.packageId?._id || p.packageId)
+      };
+    }),
 
     transactions,
 
@@ -529,6 +479,40 @@ export async function createDeposit(
       reference,
       proofUrl
     } = req.body;
+
+    const proof = String(proofUrl || '').trim();
+
+    if (!req.user) {
+      return res.status(401).json({
+        message: 'Authentication required'
+      });
+    }
+
+    const currentUserId = String(req.user.id);
+
+    const proofMatch = proof.match(
+      /^\/api\/deposits\/payment-proof\/([a-f0-9]{24})-([a-f0-9]{24})$/
+    );
+
+    if(
+      !proofMatch ||
+      proofMatch[1] !== currentUserId
+    ){
+      return res.status(400).json({
+        message:'Invalid payment proof.'
+      });
+    }
+
+    if(
+      !(await paymentProofExists(
+        proofMatch[2],
+        String(req.user.id)
+      ))
+    ){
+      return res.status(400).json({
+        message:'Payment proof was not uploaded by this account.'
+      });
+    }
 
     if (
       !mongoose.isValidObjectId(
@@ -648,7 +632,7 @@ export async function createDeposit(
 
               reference: ref,
 
-              proofUrl,
+              proofUrl: proof,
 
               status: 'PENDING'
             }],
@@ -764,7 +748,7 @@ export async function createDeposit(
 
                 reference: ref,
 
-                proofUrl,
+                proofUrl: proof,
 
                 status: 'PENDING'
               });
@@ -876,7 +860,7 @@ export async function deposits(
     deposits:
       rows.map(
         d => ({
-          ...d.toObject(),
+          ...d,
 
           packageName:
             (d.packageId as any)?.name ||
@@ -1885,13 +1869,7 @@ export async function withdrawals(
 ) {
 
   res.json({
-    withdrawals:
-      await Withdrawal.find({
-        userId:
-          req.user!.id
-      }).sort({
-        createdAt: -1
-      })
+    withdrawals: await Withdrawal.find({ userId: req.user!.id }).limit(100).lean()
   });
 }
 
@@ -2661,7 +2639,7 @@ export async function transactions(
         .skip(
           (pg - 1) * lim
         )
-        .limit(lim),
+        .limit(lim).lean(),
 
       Transaction.countDocuments(
         filter
@@ -2726,29 +2704,6 @@ export async function team(
    * L1 = Direct Team
    * L2-L4 = Indirect Team
    */
-  const allUsers = await User.find({})
-    .select(
-      '_id userId fullName status createdAt referredBy'
-    )
-    .lean();
-
-  const childrenMap = new Map<
-    string,
-    typeof allUsers
-  >();
-
-  for (const member of allUsers) {
-    if (!member.referredBy) continue;
-
-    const parentId = String(member.referredBy);
-
-    const children =
-      childrenMap.get(parentId) || [];
-
-    children.push(member);
-    childrenMap.set(parentId, children);
-  }
-
   type NetworkMember = {
     _id: string;
     userId: string;
@@ -2760,61 +2715,55 @@ export async function team(
     commission: number;
   };
 
-  const network: NetworkMember[] = [];
-
-  const queue: {
-    id: string;
-    level: number;
-  }[] = [
+  const descendants = await User.aggregate([
     {
-      id: userId,
-      level: 0
+      $match: {
+        _id: new mongoose.Types.ObjectId(userId)
+      }
+    },
+    {
+      $graphLookup: {
+        from: 'users',
+        startWith: '$_id',
+        connectFromField: '_id',
+        connectToField: 'referredBy',
+        as: 'descendants',
+        maxDepth: 3,
+        depthField: 'networkDepth'
+      }
+    },
+    {
+      $project: {
+        descendants: 1
+      }
     }
-  ];
-
-  const visited = new Set<string>([
-    userId
   ]);
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
+  const network: NetworkMember[] = [];
+  const visited = new Set<string>([userId]);
 
-    if (current.level >= 4) {
+  for (const child of descendants[0]?.descendants || []) {
+    const childId = String(child._id);
+
+    if (visited.has(childId)) {
       continue;
     }
 
-    const children =
-      childrenMap.get(current.id) || [];
+    visited.add(childId);
 
-    for (const child of children) {
-      const childId = String(child._id);
-
-      if (visited.has(childId)) {
-        continue;
-      }
-
-      visited.add(childId);
-
-      const level =
-        current.level + 1;
-
-      network.push({
-        _id: childId,
-        userId: child.userId,
-        name: child.fullName,
-        level,
-        status: child.status,
-        joinedAt: (child as any).createdAt,
-        volume: 0,
-        commission: 0
-      });
-
-      queue.push({
-        id: childId,
-        level
-      });
-    }
+    network.push({
+      _id: childId,
+      userId: String(child.userId),
+      name: String(child.fullName || ''),
+      level: Number(child.networkDepth || 0) + 1,
+      status: String(child.status || ''),
+      joinedAt: child.createdAt,
+      volume: 0,
+      commission: 0
+    });
   }
+
+  network.sort((a, b) => a.level - b.level);
 
   /*
    * Current business is calculated from ACTIVE
@@ -3029,40 +2978,50 @@ export async function rewards(
   res: Response
 ) {
 
-  const tiers =
-    await Reward.find({
-      status:
-        'ACTIVE'
-    }).sort({
-      threshold:
-        1
-    });
-
-  const eligible =
-    await eligibleRewards(
-      req.user!.id
-    );
-
-  const claims =
-    await (
+  const RewardClaim =
+    (
       await import(
         '../models/index.js'
       )
-    ).RewardClaim.find({
+    ).RewardClaim;
+
+  const rewardService =
+    await import(
+      '../services/rewardService.js'
+    );
+
+  const qualifying =
+    await rewardService.qualifyingVolume(
+      req.user!.id
+    );
+
+  const [
+    tiers,
+    eligible,
+    claims
+  ] = await Promise.all([
+    Reward.find({
+      status:
+        'ACTIVE'
+    }).limit(100).lean(),
+
+    Reward.find({
+      status:
+        'ACTIVE',
+      threshold:
+        { $lte: qualifying }
+    }).sort({
+      threshold:
+        1
+    }).limit(100).lean(),
+
+    RewardClaim.find({
       userId:
         req.user!.id
     }).select(
       'rewardId'
-    );
-
-  const qualifying =
-    await (
-      await import(
-        '../services/rewardService.js'
-      )
-    ).qualifyingVolume(
-      req.user!.id
-    );
+    ).lean()
+  ]);
 
   res.json({
 
@@ -3197,14 +3156,7 @@ export async function promos(
 ) {
 
   res.json({
-    promos:
-      await PromoCode.find({
-        status:
-          'ACTIVE'
-      }).sort({
-        createdAt:
-          -1
-      })
+    promos: await PromoCode.find({ status: 'ACTIVE' }).limit(100).lean()
   });
 }
 
@@ -3220,13 +3172,7 @@ export async function notifications(
 
   res.json({
     notifications:
-      await Notification.find({
-        userId:
-          req.user!.id
-      }).sort({
-        createdAt:
-          -1
-      })
+      await Notification.find({ userId: req.user!.id }).limit(100).lean()
   });
 }
 
@@ -3581,33 +3527,46 @@ export async function adminDashboard(
   res: Response
 ) {
 
+  if (adminDashboardCache && Date.now() < adminDashboardCacheExpiresAt) {
+    return res.json(adminDashboardCache);
+  }
+
   const [
-    users,
-    activeUsers,
-    deposits,
-    withdrawals,
-    activePackages,
+    userTotals,
+    transactionTotals,
+    packageTotals,
     pendingDeposits,
     pendingWithdrawals,
-    packagePurchases,
-    incomeDistributed,
-    commissionDistributed,
-    rewardsDistributed
+    distributionTotals
   ] = await Promise.all([
 
-    User.countDocuments(),
-
-    User.countDocuments({
-      status:
-        'ACTIVE'
-    }),
+    User.aggregate([
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          active: {
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'ACTIVE'] },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      }
+    ]),
 
     Transaction.aggregate([
       {
         $match: {
-          type:
-            'DEPOSIT',
-
+          type: {
+            $in: [
+              'DEPOSIT',
+              'WITHDRAWAL'
+            ]
+          },
           status:
             'COMPLETED'
         }
@@ -3617,55 +3576,71 @@ export async function adminDashboard(
           _id:
             null,
 
-          total:
-            {
-              $sum:
-                '$amount'
-            },
-
-          count:
-            {
-              $sum:
-                1
+          depositTotal: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    '$type',
+                    'DEPOSIT'
+                  ]
+                },
+                '$amount',
+                0
+              ]
             }
+          },
+
+          depositCount: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    '$type',
+                    'DEPOSIT'
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
+
+          withdrawalTotal: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    '$type',
+                    'WITHDRAWAL'
+                  ]
+                },
+                '$amount',
+                0
+              ]
+            }
+          }
         }
       }
     ]),
 
-    Transaction.aggregate([
-      {
-        $match: {
-          type:
-            'WITHDRAWAL',
-
-          status:
-            'COMPLETED'
-        }
-      },
+    PackagePurchase.aggregate([
       {
         $group: {
-          _id:
-            null,
-
-          total:
-            {
-              $sum:
-                '$amount'
-            },
-
-          count:
-            {
-              $sum:
-                1
+          _id: null,
+          total: { $sum: 1 },
+          active: {
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'ACTIVE'] },
+                1,
+                0
+              ]
             }
+          }
         }
       }
     ]),
-
-    PackagePurchase.countDocuments({
-      status:
-        'ACTIVE'
-    }),
 
     Deposit.countDocuments({
       status:
@@ -3682,68 +3657,20 @@ export async function adminDashboard(
       }
     }),
 
-    PackagePurchase.countDocuments(),
-
     Transaction.aggregate([
       {
         $match: {
-          type:
-            'PACKAGE_INCOME',
-
           status:
-            'COMPLETED'
-        }
-      },
-      {
-        $group: {
-          _id:
-            null,
+            'COMPLETED',
 
-          total:
-            {
-              $sum:
-                '$amount'
-            }
-        }
-      }
-    ]),
-
-    Transaction.aggregate([
-      {
-        $match: {
-          type:
-            'COMMISSION',
-
-          status:
-            'COMPLETED'
-        }
-      },
-      {
-        $group: {
-          _id:
-            null,
-
-          total:
-            {
-              $sum:
-                '$amount'
-            }
-        }
-      }
-    ]),
-
-    Transaction.aggregate([
-      {
-        $match: {
           type: {
             $in: [
+              'PACKAGE_INCOME',
+              'COMMISSION',
               'REWARD',
               'PROMO_REWARD'
             ]
-          },
-
-          status:
-            'COMPLETED'
+          }
         }
       },
       {
@@ -3751,54 +3678,101 @@ export async function adminDashboard(
           _id:
             null,
 
-          total:
-            {
-              $sum:
-                '$amount'
+          incomeDistributed: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    '$type',
+                    'PACKAGE_INCOME'
+                  ]
+                },
+                '$amount',
+                0
+              ]
             }
+          },
+
+          commissionDistributed: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    '$type',
+                    'COMMISSION'
+                  ]
+                },
+                '$amount',
+                0
+              ]
+            }
+          },
+
+          rewardsDistributed: {
+            $sum: {
+              $cond: [
+                {
+                  $in: [
+                    '$type',
+                    [
+                      'REWARD',
+                      'PROMO_REWARD'
+                    ]
+                  ]
+                },
+                '$amount',
+                0
+              ]
+            }
+          }
         }
       }
     ])
   ]);
 
-  res.json({
+  const response = {
 
-    users,
+    users: userTotals[0]?.total || 0,
 
-    activeUsers,
+    activeUsers: userTotals[0]?.active || 0,
 
     deposits:
-      deposits[0]?.total ||
+      transactionTotals[0]?.depositTotal ||
       0,
 
     pendingDeposits,
 
     completedDeposits:
-      deposits[0]?.count ||
+      transactionTotals[0]?.depositCount ||
       0,
 
     withdrawals:
-      withdrawals[0]?.total ||
+      transactionTotals[0]?.withdrawalTotal ||
       0,
 
     pendingWithdrawals,
 
-    packagePurchases,
+    packagePurchases: packageTotals[0]?.total || 0,
 
-    activePackages,
+    activePackages: packageTotals[0]?.active || 0,
 
     incomeDistributed:
-      incomeDistributed[0]?.total ||
+      distributionTotals[0]?.incomeDistributed ||
       0,
 
     commissionDistributed:
-      commissionDistributed[0]?.total ||
+      distributionTotals[0]?.commissionDistributed ||
       0,
 
     rewardsDistributed:
-      rewardsDistributed[0]?.total ||
+      distributionTotals[0]?.rewardsDistributed ||
       0
-  });
+  };
+
+  adminDashboardCache = response;
+  adminDashboardCacheExpiresAt = Date.now() + ADMIN_DASHBOARD_CACHE_MS;
+
+  return res.json(response);
 }
 
 
@@ -3813,15 +3787,7 @@ export async function adminUsers(
 
   res.json({
     users:
-      await User.find()
-        .select(
-          '-passwordHash'
-        )
-        .sort({
-          createdAt:
-            -1
-        })
-        .lean()
+      await User.find().select('-passwordHash').limit(100).lean()
   });
 }
 
@@ -3833,15 +3799,7 @@ export async function adminPackages(
 
   res.json({
     packages:
-      await Package.find()
-        .sort({
-          sortOrder:
-            1,
-
-          createdAt:
-            1
-        })
-        .lean()
+      await Package.find().limit(100).lean()
   });
 }
 
@@ -3853,6 +3811,7 @@ export async function adminDeposits(
 
   const rows =
     await Deposit.find()
+      .sort({ createdAt: -1 })
       .populate(
         'userId',
         'fullName email userId'
@@ -3861,17 +3820,14 @@ export async function adminDeposits(
         'packageId',
         'name amount'
       )
-      .sort({
-        createdAt:
-          -1
-      });
+      .limit(100).lean()
 
   res.json({
 
     deposits:
       rows.map(
         d => ({
-          ...d.toObject(),
+          ...d,
 
           packageName:
             (d.packageId as any)?.name ||
@@ -4118,16 +4074,16 @@ export async function adminWithdrawals(
   res: Response
 ) {
 
-  const withdrawals =
-    await Withdrawal.find()
-      .populate(
-        'userId',
-        'fullName email userId'
-      )
+  const withdrawals = await Withdrawal.find()
       .sort({
         createdAt:
           -1
       })
+      .limit(100)
+      .populate(
+        'userId',
+        'fullName email userId'
+      )
       .lean();
 
   return res.json({
@@ -4141,9 +4097,7 @@ export async function adminTransactions(
   res: Response
 ) {
 
-  const transactions =
-    await Transaction.find()
-      .sort({
+  const transactions = await Transaction.find().sort({
         createdAt:
           -1
       })
@@ -4167,6 +4121,7 @@ export async function adminPaymentMethods(
         displayOrder:
           1
       })
+      .limit(100)
       .lean();
 
   return res.json({
@@ -4186,6 +4141,7 @@ export async function adminPromos(
         createdAt:
           -1
       })
+      .limit(100)
       .lean();
 
   return res.json({
@@ -4202,10 +4158,9 @@ export async function adminRewards(
   res.json({
     rewards:
       await Reward.find()
-        .sort({
-          sortOrder:
-            1
-        })
+        .sort({ threshold: 1 })
+        .limit(100)
+        .lean(),
   });
 }
 
@@ -4229,11 +4184,9 @@ export async function adminAuditLogs(
   res.json({
     logs:
       await AuditLog.find()
-        .sort({
-          createdAt:
-            -1
-        })
-        .limit(500)
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .lean(),
   });
 }
 
@@ -4246,11 +4199,9 @@ export async function adminNotifications(
   res.json({
     notifications:
       await Notification.find()
-        .sort({
-          createdAt:
-            -1
-        })
-        .limit(500)
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .lean(),
   });
 }
 
@@ -6685,10 +6636,21 @@ export async function adminUpdateUserStatus(
     });
   }
 
+  const oldStatus = user.status;
+
   user.status = status as 'ACTIVE' | 'DISABLED';
   user.tokenVersion = Number(user.tokenVersion || 0) + 1;
 
   await user.save();
+
+  await audit(
+    req,
+    'UPDATE_STATUS',
+    'User',
+    String(user._id),
+    {status:oldStatus},
+    {status:user.status}
+  );
 
   const updatedUser = await User.findById(user._id)
     .select('-passwordHash');
@@ -6697,4 +6659,22 @@ export async function adminUpdateUserStatus(
     user: updatedUser
   });
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

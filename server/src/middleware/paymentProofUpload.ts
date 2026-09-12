@@ -1,11 +1,4 @@
-﻿import multer from 'multer';
-import path from 'path';
-import crypto from 'crypto';
-import fs from 'fs';
-
-const uploadDir = path.resolve(process.cwd(), 'uploads', 'payment-proofs');
-
-fs.mkdirSync(uploadDir, { recursive: true });
+import multer from 'multer';
 
 const allowedMimeTypes = new Set([
   'image/jpeg',
@@ -13,28 +6,8 @@ const allowedMimeTypes = new Set([
   'image/webp'
 ]);
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadDir);
-  },
-
-  filename: (_req, file, cb) => {
-    const ext =
-      file.mimetype === 'image/png'
-        ? '.png'
-        : file.mimetype === 'image/webp'
-          ? '.webp'
-          : '.jpg';
-
-    const randomName =
-      `${Date.now()}-${crypto.randomBytes(16).toString('hex')}${ext}`;
-
-    cb(null, randomName);
-  }
-});
-
 export const paymentProofUpload = multer({
-  storage,
+  storage: multer.memoryStorage(),
 
   limits: {
     fileSize: 5 * 1024 * 1024,
@@ -44,10 +17,53 @@ export const paymentProofUpload = multer({
   fileFilter: (_req, file, cb) => {
     if (!allowedMimeTypes.has(file.mimetype)) {
       return cb(
-        new Error('Only JPG, PNG and WEBP payment screenshots are allowed.')
+        new Error(
+          'Only JPG, PNG and WEBP payment screenshots are allowed.'
+        )
       );
     }
 
     cb(null, true);
   }
 });
+
+export function detectPaymentProofType(
+  buffer: Buffer
+): 'image/jpeg' | 'image/png' | 'image/webp' | null {
+
+  // JPEG
+  if (
+    buffer.length >= 3 &&
+    buffer[0] === 0xff &&
+    buffer[1] === 0xd8 &&
+    buffer[2] === 0xff
+  ) {
+    return 'image/jpeg';
+  }
+
+  // PNG
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+
+  // WEBP
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+
+  return null;
+}

@@ -1,1 +1,93 @@
-import {Request,Response,NextFunction} from 'express';import {verify} from '../utils/auth.js';import {User} from '../models/index.js';export interface AuthedRequest extends Request{user?:{id:string;role:string;tokenVersion:number}}export async function auth(req:AuthedRequest,res:Response,next:NextFunction){const h=req.headers.authorization;if(!h?.startsWith('Bearer '))return res.status(401).json({message:'Authentication required'});try{const token=verify(h.slice(7));const u=await User.findById(token.id).select('_id role status tokenVersion').lean();if(!u||u.status!=='ACTIVE')return res.status(401).json({message:'Invalid or expired token'});if(Number(token.tokenVersion||0)!==Number(u.tokenVersion||0))return res.status(401).json({message:'Session expired. Please sign in again.'});if(token.role!==u.role)return res.status(401).json({message:'Session expired. Please sign in again.'});req.user={id:String(u._id),role:u.role,tokenVersion:Number(u.tokenVersion||0)};next()}catch{return res.status(401).json({message:'Invalid or expired token'})}}export function admin(req:AuthedRequest,res:Response,next:NextFunction){if(req.user?.role!=='ADMIN')return res.status(403).json({message:'Admin access required'});next()}
+﻿import {
+  Request,
+  Response,
+  NextFunction
+} from 'express';
+
+import { verify } from '../utils/auth.js';
+import { User } from '../models/index.js';
+
+export interface AuthedRequest extends Request {
+  user?: {
+    id: string;
+    role: string;
+    tokenVersion: number;
+    impersonatedBy?: string;
+  };
+}
+
+export async function auth(
+  req: AuthedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  const h = req.headers.authorization;
+
+  if (!h?.startsWith('Bearer ')) {
+    return res.status(401).json({
+      message: 'Authentication required'
+    });
+  }
+
+  try {
+    const token = verify(h.slice(7));
+
+    const u = await User
+      .findById(token.id)
+      .select('_id role status tokenVersion')
+      .lean();
+
+    if (!u || u.status !== 'ACTIVE') {
+      return res.status(401).json({
+        message: 'Invalid or expired token'
+      });
+    }
+
+    if (
+      Number(token.tokenVersion || 0) !==
+      Number(u.tokenVersion || 0)
+    ) {
+      return res.status(401).json({
+        message: 'Session expired. Please sign in again.'
+      });
+    }
+
+    if (token.role !== u.role) {
+      return res.status(401).json({
+        message: 'Session expired. Please sign in again.'
+      });
+    }
+
+    req.user = {
+      id: String(u._id),
+      role: u.role,
+      tokenVersion: Number(u.tokenVersion || 0),
+      ...(token.impersonatedBy
+        ? {
+            impersonatedBy:
+              String(token.impersonatedBy)
+          }
+        : {})
+    };
+
+    next();
+  } catch {
+    return res.status(401).json({
+      message: 'Invalid or expired token'
+    });
+  }
+}
+
+export function admin(
+  req: AuthedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (req.user?.role !== 'ADMIN') {
+    return res.status(403).json({
+      message: 'Admin access required'
+    });
+  }
+
+  next();
+}

@@ -1,4 +1,4 @@
-﻿import {api,mockMode,setToken,clearToken} from './api';
+import {api,mockMode,setToken,clearToken} from './api';
 import * as m from './mock';
 import type {
   PackagePlan,
@@ -276,7 +276,29 @@ export const depositService={
 
 export const withdrawalService={
 
-  getWithdrawals:()=>getOr<Withdrawal[]>(
+  async openPaymentProof(proofUrl:string){
+  const response = await api.get(
+    proofUrl,
+    {
+      responseType:'blob'
+    }
+  );
+
+  const objectUrl =
+    URL.createObjectURL(response.data);
+
+  window.open(
+    objectUrl,
+    '_blank',
+    'noopener,noreferrer'
+  );
+
+  window.setTimeout(
+    () => URL.revokeObjectURL(objectUrl),
+    60000
+  );
+},
+getWithdrawals:()=>getOr<Withdrawal[]>(
     '/withdrawals',
     m.withdrawals,
     'withdrawals'
@@ -1012,7 +1034,29 @@ export const adminService={
     'deposits'
   ),
 
-  getWithdrawals:()=>getOr<Withdrawal[]>(
+  async openPaymentProof(proofUrl:string){
+  const response = await api.get(
+    proofUrl,
+    {
+      responseType:'blob'
+    }
+  );
+
+  const objectUrl =
+    URL.createObjectURL(response.data);
+
+  window.open(
+    objectUrl,
+    '_blank',
+    'noopener,noreferrer'
+  );
+
+  window.setTimeout(
+    () => URL.revokeObjectURL(objectUrl),
+    60000
+  );
+},
+getWithdrawals:()=>getOr<Withdrawal[]>(
     '/admin/withdrawals',
     m.withdrawals,
     'withdrawals'
