@@ -978,7 +978,7 @@ export const adminService={
     ).data;
   },
 
-  async updateUserStatus(userId:string,status:'ACTIVE'|'SUSPENDED'){
+  async updateUserStatus(userId:string,status:'ACTIVE'|'DISABLED'){
     if(mockMode){
       return delay({message:'User status updated successfully'});
     }
@@ -1793,6 +1793,8 @@ export const apiServices={
 };
 
 export const telegramService={linkCode:async()=> (await api.post('/telegram/link-code')).data,unlink:async()=> (await api.post('/telegram/unlink')).data};
+
+
 
 
 

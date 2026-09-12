@@ -643,7 +643,7 @@ export default function Admin(){
                           await adminService.updateUserStatus(
                             u._id,
                             u.status==='ACTIVE'
-                              ? 'SUSPENDED'
+                              ? 'DISABLED'
                               : 'ACTIVE'
                           );
                           await load();
@@ -1612,6 +1612,7 @@ function SettingsPanel({
     </div>
   );
 }
+
 
 
 
