@@ -7,6 +7,35 @@
 import { verify } from '../utils/auth.js';
 import { User } from '../models/index.js';
 
+type AuthUser = {
+  id: string;
+  role: string;
+  tokenVersion: number;
+  impersonatedBy?: string;
+};
+
+type AuthCacheEntry = {
+  user: AuthUser;
+  expiresAt: number;
+};
+
+const AUTH_CACHE_MS = 2000;
+const authCache = new Map<string, AuthCacheEntry>();
+
+function getCachedUser(id: string) {
+  const entry = authCache.get(id);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    authCache.delete(id);
+    return null;
+  }
+  return entry.user;
+}
+
+export function invalidateAuthUserCache(id: string) {
+  authCache.delete(String(id));
+}
+
 export interface AuthedRequest extends Request {
   user?: {
     id: string;
@@ -32,12 +61,32 @@ export async function auth(
   try {
     const token = verify(h.slice(7));
 
-    const u = await User
-      .findById(token.id)
-      .select('_id role status tokenVersion')
-      .lean();
+    let cached = getCachedUser(String(token.id));
 
-    if (!u || u.status !== 'ACTIVE') {
+    if (!cached) {
+      const u = await User
+        .findById(token.id)
+        .select('_id role status tokenVersion')
+        .lean();
+
+      if (!u || u.status !== 'ACTIVE') {
+        return res.status(401).json({
+          message: 'Invalid or expired token'
+        });
+      }
+
+      cached = {
+        id: String(u._id),
+        role: u.role,
+        tokenVersion: Number(u.tokenVersion || 0)
+      };
+      authCache.set(String(token.id), {
+        user: cached,
+        expiresAt: Date.now() + AUTH_CACHE_MS
+      });
+    }
+
+    if (!cached) {
       return res.status(401).json({
         message: 'Invalid or expired token'
       });
@@ -45,23 +94,23 @@ export async function auth(
 
     if (
       Number(token.tokenVersion || 0) !==
-      Number(u.tokenVersion || 0)
+      Number(cached.tokenVersion || 0)
     ) {
       return res.status(401).json({
         message: 'Session expired. Please sign in again.'
       });
     }
 
-    if (token.role !== u.role) {
+    if (token.role !== cached.role) {
       return res.status(401).json({
         message: 'Session expired. Please sign in again.'
       });
     }
 
     req.user = {
-      id: String(u._id),
-      role: u.role,
-      tokenVersion: Number(u.tokenVersion || 0),
+      id: cached.id,
+      role: cached.role,
+      tokenVersion: cached.tokenVersion,
       ...(token.impersonatedBy
         ? {
             impersonatedBy:
