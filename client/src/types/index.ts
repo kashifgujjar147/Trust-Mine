@@ -1,4 +1,4 @@
-﻿export type Role='USER'|'ADMIN';
+export type Role='USER'|'ADMIN';
 export type Status='PENDING'|'PROCESSING'|'COMPLETED'|'REJECTED'|'FAILED'|'ACTIVE'|'APPROVED'|'PAID'|'EXPIRED'|'CANCELLED';
 export type TransactionType='DEPOSIT'|'PACKAGE_PURCHASE'|'PACKAGE_INCOME'|'WITHDRAWAL'|'WITHDRAWAL_FEE'|'COMMISSION'|'REWARD'|'PROMO_REWARD'|'ADJUSTMENT'|'REFUND'|'REVERSAL';
 export interface Admin extends User{}
@@ -41,7 +41,7 @@ export interface SupportMessage{
   message:string;
   createdAt:string;
 }
-export interface DashboardData{balance:number;totalBalance?:number;availableBalance:number;lockedWithdrawalAmount?:number;totalDeposit:number;income:number;totalWithdrawals:number;activePackages:number;todayIncome:number;pendingWithdrawal:number;team:number;commission:number;rewards:number;activePackagePurchases:PackagePurchase[];transactions:Transaction[];}
+export interface DashboardData{balance:number;totalBalance?:number;availableBalance:number;lockedWithdrawalAmount?:number;lockedPackageCapital?:number;totalDeposit:number;income:number;totalWithdrawals:number;activePackages:number;todayIncome:number;pendingWithdrawal:number;team:number;commission:number;rewards:number;activePackagePurchases:PackagePurchase[];transactions:Transaction[];}
 export interface NotificationSettings{email:boolean;inApp:boolean}
 export interface PlatformSettings{currency:string;minimumDeposit:number;minimumWithdrawal:number;withdrawalFeePercent:number;commissionRates:number[];rewardTiers:RewardTier[];maintenanceMode:boolean;supportEmail:string;supportPhone:string;paymentMethods?:PaymentMethod[];notificationSettings?:NotificationSettings;cycleIntervalHours?:number;packageDurationDays?:number;}
 export interface AdminDashboardData{users:number;activeUsers:number;deposits:number;pendingDeposits:number;completedDeposits:number;withdrawals:number;pendingWithdrawals:number;packagePurchases:number;activePackages:number;incomeDistributed:number;commissionDistributed:number;rewardsDistributed:number;}

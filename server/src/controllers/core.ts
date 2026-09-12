@@ -1,4 +1,4 @@
-﻿
+
 import { Request, Response } from 'express';
 import mongoose, {ClientSession} from 'mongoose';
 
@@ -427,6 +427,9 @@ export async function dashboard(
 
     lockedWithdrawalAmount:
       wallet.lockedWithdrawalAmount,
+
+  lockedPackageCapital:
+    wallet.lockedPackageCapital,
 
     totalDeposit:
       depAgg[0]?.total || 0,

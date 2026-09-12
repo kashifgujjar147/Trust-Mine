@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import mongoose, {ClientSession} from 'mongoose';
 import { env } from '../config/env.js';
-import {Transaction,Wallet,User,Withdrawal} from '../models/index.js';
+import {Transaction,Wallet,User,Withdrawal,PackagePurchase} from '../models/index.js';
 
 export function txid(prefix='TX'){return `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`}
 export function transactionUnsupported(error:unknown){const message=String((error as {message?:unknown})?.message||error);return /Transaction numbers are only allowed|replica set|does not support transactions|transaction is not supported/i.test(message)}
@@ -27,7 +27,75 @@ async function rebuildWallet(userId:string,session?:ClientSession){
 export async function ensureWallet(userId:string,session?:ClientSession){const oid=new mongoose.Types.ObjectId(userId);const found=await Wallet.findOne({userId:oid}).session(session||null);return found||rebuildWallet(userId,session)}
 export async function creditWallet(userId:string,amount:number,session?:ClientSession){if(!Number.isFinite(amount)||amount<=0)throw new Error('Invalid wallet credit');return Wallet.findOneAndUpdate({userId:new mongoose.Types.ObjectId(userId)},{$inc:{totalBalance:amount}},{upsert:true,new:true,setDefaultsOnInsert:true,session})}
 export async function debitWallet(userId:string,amount:number,session?:ClientSession){if(!Number.isFinite(amount)||amount<=0)throw new Error('Invalid wallet debit');const r=await Wallet.findOneAndUpdate({userId:new mongoose.Types.ObjectId(userId),totalBalance:{$gte:amount}},{$inc:{totalBalance:-amount}},{new:true,session});if(!r)throw new Error('Insufficient wallet balance');return r}
-export async function reserveWithdrawal(userId:string,amount:number,session?:ClientSession){const oid=new mongoose.Types.ObjectId(userId);await ensureWallet(userId,session);const r=await Wallet.findOneAndUpdate({userId:oid,$expr:{$gte:[{$subtract:[{$ifNull:['$totalBalance',0]},{$ifNull:['$lockedWithdrawalAmount',0]}]},amount]}},{$inc:{lockedWithdrawalAmount:amount}},{new:true,session});if(!r)throw new Error('Insufficient available balance');return r}
+async function activePackageCapital(userId:string,session?:ClientSession){
+  const oid=new mongoose.Types.ObjectId(userId);
+
+  const rows=await PackagePurchase.aggregate([
+    {$match:{userId:oid,status:'ACTIVE'}},
+    {$group:{
+      _id:null,
+      total:{$sum:{$ifNull:['$packageAmount',0]}}
+    }}
+  ]).session(session||null);
+
+  return Number(Number(rows[0]?.total||0).toFixed(8));
+}
+
+export async function reserveWithdrawal(
+  userId:string,
+  amount:number,
+  session?:ClientSession
+){
+  if(!Number.isFinite(amount)||amount<=0){
+    throw new Error('Invalid withdrawal amount');
+  }
+
+  const oid=new mongoose.Types.ObjectId(userId);
+
+  await ensureWallet(userId,session);
+
+  const packageCapital =
+    await activePackageCapital(userId,session);
+
+  const r =
+    await Wallet.findOneAndUpdate(
+      {
+        userId:oid,
+
+        $expr:{
+          $gte:[
+            {
+              $subtract:[
+                {
+                  $subtract:[
+                    {$ifNull:['$totalBalance',0]},
+                    {$ifNull:['$lockedWithdrawalAmount',0]}
+                  ]
+                },
+                packageCapital
+              ]
+            },
+            amount
+          ]
+        }
+      },
+      {
+        $inc:{
+          lockedWithdrawalAmount:amount
+        }
+      },
+      {
+        new:true,
+        session
+      }
+    );
+
+  if(!r){
+    throw new Error('Insufficient available balance');
+  }
+
+  return r;
+}
 export async function releaseWithdrawal(userId:string,amount:number,session?:ClientSession){return Wallet.findOneAndUpdate({userId:new mongoose.Types.ObjectId(userId),lockedWithdrawalAmount:{$gte:amount}},{$inc:{lockedWithdrawalAmount:-amount}},{new:true,session})}
 export async function getWallet(userId:string){return ensureWallet(userId)}
 export async function finalizeWithdrawal(userId:string,amount:number,session?:ClientSession){const r=await Wallet.findOneAndUpdate({userId:new mongoose.Types.ObjectId(userId),lockedWithdrawalAmount:{$gte:amount},totalBalance:{$gte:amount}},{$inc:{lockedWithdrawalAmount:-amount,totalBalance:-amount}},{new:true,session});if(!r)throw new Error('Withdrawal reservation is invalid');return r}
@@ -56,7 +124,37 @@ export async function ledger(data:LedgerInput,session?:ClientSession){
     throw error;
   }
 }
-export async function balanceSnapshot(userId:string){const w=await ensureWallet(userId);const total=Number(w?.totalBalance||0);const locked=Number(w?.lockedWithdrawalAmount||0);return {totalBalance:total,lockedWithdrawalAmount:locked,availableBalance:Math.max(0,Number((total-locked).toFixed(8)))} }
+export async function balanceSnapshot(userId:string){
+  const w=await ensureWallet(userId);
+
+  const total=
+    Number(w?.totalBalance||0);
+
+  const locked=
+    Number(w?.lockedWithdrawalAmount||0);
+
+  const packageCapital=
+    await activePackageCapital(userId);
+
+  const availableBalance=
+    Math.max(
+      0,
+      Number(
+        (
+          total -
+          locked -
+          packageCapital
+        ).toFixed(8)
+      )
+    );
+
+  return {
+    totalBalance:total,
+    lockedWithdrawalAmount:locked,
+    lockedPackageCapital:packageCapital,
+    availableBalance
+  };
+}
 export async function balanceFor(userId:string){return (await balanceSnapshot(userId)).totalBalance}
 export async function initializeWallets(){
   const users=await User.find().select('_id').lean();
