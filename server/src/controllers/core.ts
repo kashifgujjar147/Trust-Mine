@@ -1,4 +1,4 @@
-
+﻿
 import { Request, Response } from 'express';
 import mongoose, {ClientSession} from 'mongoose';
 
@@ -50,7 +50,8 @@ import {
 } from '../services/rewardService.js';
 
 import {
-  getUpline
+  getUpline,
+  createCommissions
 } from '../services/referralService.js';
 
 import { isWithdrawalProcessingWindow, claimWithdrawalSlot } from '../services/withdrawalPolicy.js';
@@ -1042,6 +1043,17 @@ export async function verifyDeposit(
             // performs the single wallet credit. Never credit again here.
           }
 
+          // Ensure referral commissions are also created for completed
+          // deposits recovered through this idempotent path.
+          // createCommissions() is idempotent, so existing commissions
+          // will not be duplicated.
+          await createCommissions(
+            String(done.userId),
+            Number(done.amount),
+            String(done.transactionId),
+            session
+          );
+
           let purchase =
             await PackagePurchase.findOne({
               paymentId:
@@ -1227,6 +1239,15 @@ export async function verifyDeposit(
       await creditWallet(
         String(d.userId),
         d.amount,
+        session
+      );
+
+      // Distribute referral commissions from the completed deposit.
+      // Idempotency is handled inside createCommissions().
+      await createCommissions(
+        String(d.userId),
+        Number(d.amount),
+        String(d.transactionId),
         session
       );
 
@@ -6551,6 +6572,9 @@ export async function updateSettings(
     await getSettings()
   );
 }
+
+
+
 
 
 

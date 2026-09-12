@@ -1,4 +1,4 @@
-import mongoose,{ClientSession} from 'mongoose';
+﻿import mongoose,{ClientSession} from 'mongoose';
 import {Reward,Transaction,RewardClaim} from '../models/index.js';
 import {ledger,withMongoTransaction} from './ledger.js';
 
@@ -9,3 +9,5 @@ export async function claimReward(userId:string,rewardId:string){
  const work=async(session:ClientSession)=>{const eligible=await eligibleRewards(userId,session);if(!eligible.some(x=>String(x._id)===rewardId))throw Object.assign(new Error('Reward not eligible'),{statusCode:409});const reference=`REWARD-${rewardId}-${userId}`;const existing=await Transaction.findOne({userId,type:'REWARD',reference,status:'COMPLETED'}).session(session);if(existing)return existing;try{await RewardClaim.create([{userId,rewardId,reference}],{session})}catch(e:unknown){if((e as {code?:number})?.code===11000){const prior=await Transaction.findOne({userId,type:'REWARD',reference,status:'COMPLETED'}).session(session);if(prior)return prior;throw Object.assign(new Error('Reward claim is already being processed'),{statusCode:409})}throw e}return ledger({userId,type:'REWARD',amount:reward.reward,status:'COMPLETED',reference,metadata:{rewardId,claimReference:reference,qualifyingVolume:await qualifyingVolume(userId,session),idempotencyKey:`reward:${userId}:${rewardId}`}},session)};
  return withMongoTransaction(work);
 }
+
+
