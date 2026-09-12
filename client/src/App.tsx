@@ -7,46 +7,12 @@ import './styles.css';
 
 const LiveChatWidget=lazy(()=>import('./components/LiveChatWidget'));
 
-const Login=lazy(()=>import('./pages/Auth').then(m=>({default:m.Login})));
-const Register=lazy(()=>import('./pages/Auth').then(m=>({default:m.Register})));
-const ForgotPassword=lazy(()=>import('./pages/Auth').then(m=>({default:m.ForgotPassword})));
-const ResetPassword=lazy(()=>import('./pages/Auth').then(m=>({default:m.ResetPassword})));
-
-const Dashboard=lazy(()=>import('./pages/Dashboard'));
-const Packages=lazy(()=>import('./pages/Packages'));
-const Deposit=lazy(()=>import('./pages/Deposit'));
-const Admin=lazy(()=>import('./pages/Admin'));
-
-const PackageDetails=lazy(()=>import('./pages/Modules').then(m=>({default:m.PackageDetails})));
-const DepositHistory=lazy(()=>import('./pages/Modules').then(m=>({default:m.DepositHistory})));
-const Withdrawal=lazy(()=>import('./pages/Modules').then(m=>({default:m.Withdrawal})));
-const WithdrawalHistory=lazy(()=>import('./pages/Modules').then(m=>({default:m.WithdrawalHistory})));
-const Transactions=lazy(()=>import('./pages/Modules').then(m=>({default:m.Transactions})));
-const Team=lazy(()=>import('./pages/Modules').then(m=>({default:m.Team})));
-const Rewards=lazy(()=>import('./pages/Modules').then(m=>({default:m.Rewards})));
-const Promo=lazy(()=>import('./pages/Modules').then(m=>({default:m.Promo})));
-const Profile=lazy(()=>import('./pages/Modules').then(m=>({default:m.Profile})));
-const Settings=lazy(()=>import('./pages/Modules').then(m=>({default:m.Settings})));
-const Notifications=lazy(()=>import('./pages/Modules').then(m=>({default:m.Notifications})));
-const Activity=lazy(()=>import('./pages/Modules').then(m=>({default:m.Activity})));
-const Support=lazy(()=>import('./pages/Modules').then(m=>({default:m.Support})));
-
-function PageLoading(){
-  return (
-    <div
-      className="page"
-      style={{
-        display:'grid',
-        placeItems:'center',
-        minHeight:'50vh'
-      }}
-    >
-      <div style={{fontWeight:700}}>
-        Loading...
-      </div>
-    </div>
-  );
-}
+import {Login,Register,ForgotPassword,ResetPassword} from './pages/Auth';
+import Dashboard from './pages/Dashboard';
+import Packages from './pages/Packages';
+import Deposit from './pages/Deposit';
+import Admin from './pages/Admin';
+import {PackageDetails,DepositHistory,Withdrawal,WithdrawalHistory,Transactions,Team,Rewards,Promo,Profile,Settings,Notifications,Activity,Support} from './pages/Modules';
 
 function LiveChatHost(){
   const {user}=useAuth();
@@ -71,8 +37,7 @@ export default function App(){
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Suspense fallback={<PageLoading/>}>
-          <Routes>
+        <Routes>
 
             <Route path="/login" element={<Login/>}/>
             <Route path="/register" element={<Register/>}/>
@@ -109,8 +74,7 @@ export default function App(){
             <Route path="/" element={<Navigate to="/dashboard" replace/>}/>
             <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
 
-          </Routes>
-        </Suspense>
+        </Routes>
 
         <LiveChatHost/>
       </BrowserRouter>
