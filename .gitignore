@@ -4,3 +4,12 @@ dist/
 .env.*
 !.env.example
 .vercel
+
+# Local backup and temporary files
+*.backup
+*.bak
+*.old
+*.tmp
+*-backup-*
+backup-*/
+_backup-*/
