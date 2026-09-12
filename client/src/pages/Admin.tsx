@@ -621,7 +621,7 @@ export default function Admin(){
         <Card>
           <Toolbar q={q} setQ={setQ}/>
 
-          <Table headers={['User','Role','Status','Referral','Joined']}>
+          <Table headers={['User','Role','Status','Referral','Joined','Actions']}>
             {filteredUsers.map(u=>(
               <tr key={u._id}>
                 <td>
@@ -661,6 +661,101 @@ export default function Admin(){
 
                 <td>
                   {new Date(u.createdAt).toLocaleDateString()}
+                </td>
+
+                <td>
+                  {u.role==='USER'&&(
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                      <button
+                        type="button"
+                        className="button"
+                        onClick={async()=>{
+                          const password=window.prompt(
+                            `New password for ${u.email}:`
+                          );
+
+                          if(password===null){
+                            return;
+                          }
+
+                          if(password.length<8){
+                            window.alert(
+                              'Password must be at least 8 characters.'
+                            );
+                            return;
+                          }
+
+                          try{
+                            await adminService.changeUserPassword(
+                              u._id,
+                              password
+                            );
+
+                            window.alert(
+                              'User password changed successfully.'
+                            );
+                          }catch(e){
+                            setError((e as Error).message);
+                          }
+                        }}
+                      >
+                        Change Password
+                      </button>
+
+                      {u.status==='ACTIVE'&&(
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={async()=>{
+                            if(!window.confirm(
+                              `Login as ${u.fullName}?`
+                            )){
+                              return;
+                            }
+
+                            try{
+                              const adminToken=
+                                localStorage.getItem('tm_token');
+
+                              if(!adminToken){
+                                throw new Error(
+                                  'Admin session token not found'
+                                );
+                              }
+
+                              const r=
+                                await adminService.loginAsUser(u._id);
+
+                              sessionStorage.setItem(
+                                'tm_admin_token',
+                                adminToken
+                              );
+
+                              sessionStorage.setItem(
+                                'tm_impersonated_user',
+                                JSON.stringify({
+                                  id:u._id,
+                                  name:u.fullName,
+                                  email:u.email
+                                })
+                              );
+
+                              localStorage.setItem(
+                                'tm_token',
+                                r.token
+                              );
+
+                              window.location.href='/';
+                            }catch(e){
+                              setError((e as Error).message);
+                            }
+                          }}
+                        >
+                          Login as User
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
