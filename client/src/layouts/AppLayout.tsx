@@ -26,6 +26,7 @@ const userItems=[
 export default function AppLayout(){
   const [open,setOpen]=useState(false);
   const [showWhatsAppJoin,setShowWhatsAppJoin]=useState(false);
+  const [isImpersonating,setIsImpersonating]=useState(false);
   const {user,logout}=useAuth();
   const nav=useNavigate();
 
@@ -35,7 +36,31 @@ export default function AppLayout(){
     }else{
       setShowWhatsAppJoin(false);
     }
+
+    setIsImpersonating(
+      Boolean(
+        sessionStorage.getItem('tm_admin_token') &&
+        sessionStorage.getItem('tm_impersonated_user')
+      )
+    );
   },[user]);
+
+  const returnToAdmin=()=>{
+    const adminToken=sessionStorage.getItem('tm_admin_token');
+
+    if(!adminToken){
+      sessionStorage.removeItem('tm_impersonated_user');
+      setIsImpersonating(false);
+      nav('/admin');
+      return;
+    }
+
+    localStorage.setItem('tm_token',adminToken);
+    sessionStorage.removeItem('tm_admin_token');
+    sessionStorage.removeItem('tm_impersonated_user');
+    setIsImpersonating(false);
+    window.location.href='/admin';
+  };
 
   const handleLogout=()=>{
     setShowWhatsAppJoin(false);
@@ -115,6 +140,49 @@ export default function AppLayout(){
       </aside>
 
       <main className="main">
+
+        {isImpersonating&&(
+          <div
+            style={{
+              position:'sticky',
+              top:0,
+              zIndex:9998,
+              display:'flex',
+              alignItems:'center',
+              justifyContent:'space-between',
+              gap:'12px',
+              padding:'10px 16px',
+              background:'#111827',
+              color:'#fff',
+              boxShadow:'0 2px 10px rgba(0,0,0,0.15)'
+            }}
+          >
+            <div
+              style={{
+                fontSize:'14px',
+                fontWeight:700
+              }}
+            >
+              You are logged in as another user
+            </div>
+
+            <button
+              type="button"
+              onClick={returnToAdmin}
+              style={{
+                border:0,
+                borderRadius:'9px',
+                padding:'9px 14px',
+                background:'#fff',
+                color:'#111827',
+                fontWeight:800,
+                cursor:'pointer'
+              }}
+            >
+              ↩ Return to Admin
+            </button>
+          </div>
+        )}
 
         <header>
           <button
@@ -279,3 +347,4 @@ export default function AppLayout(){
     </div>
   );
 }
+

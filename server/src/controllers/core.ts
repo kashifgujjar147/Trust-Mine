@@ -1,4 +1,4 @@
-﻿import { hash } from '../utils/auth.js';
+﻿import { hash ,sign} from '../utils/auth.js';
 
 import { Request, Response } from 'express';
 import mongoose, {ClientSession} from 'mongoose';
@@ -6613,6 +6613,52 @@ export async function adminChangeUserPassword(
   });
 }
 
+
+export async function adminLoginAsUser(
+  req: Request,
+  res: Response
+) {
+  const user = await User.findById(req.params.id);
+
+  if (!user) {
+    return res.status(404).json({
+      message: 'User not found'
+    });
+  }
+
+  if (user.role !== 'USER') {
+    return res.status(403).json({
+      message: 'Cannot login as an admin'
+    });
+  }
+
+  if (user.status !== 'ACTIVE') {
+    return res.status(403).json({
+      message: 'User account is disabled'
+    });
+  }
+
+  const token = sign(
+    user.id,
+    user.role,
+    Number(user.tokenVersion || 0)
+  );
+
+  return res.json({
+    token,
+    user: {
+      _id: String(user._id),
+      fullName: user.fullName,
+      username: user.username,
+      email: user.email,
+      phone: user.phone,
+      userId: user.userId,
+      referralCode: user.referralCode,
+      role: user.role,
+      status: user.status
+    }
+  });
+}
 export async function adminUpdateUserStatus(
   req: Request,
   res: Response
@@ -6651,3 +6697,4 @@ export async function adminUpdateUserStatus(
     user: updatedUser
   });
 }
+

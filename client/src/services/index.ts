@@ -1,4 +1,4 @@
-import {api,mockMode,setToken,clearToken} from './api';
+﻿import {api,mockMode,setToken,clearToken} from './api';
 import * as m from './mock';
 import type {
   PackagePlan,
@@ -978,6 +978,21 @@ export const adminService={
     ).data;
   },
 
+  async loginAsUser(userId:string){
+    if(mockMode){
+      return delay({
+        token:'mock-impersonation-token',
+        user:{}
+      });
+    }
+
+    return (
+      await api.post(
+        `/admin/users/${userId}/login-as`
+      )
+    ).data;
+  },
+
   async updateUserStatus(userId:string,status:'ACTIVE'|'DISABLED'){
     if(mockMode){
       return delay({message:'User status updated successfully'});
@@ -1793,6 +1808,7 @@ export const apiServices={
 };
 
 export const telegramService={linkCode:async()=> (await api.post('/telegram/link-code')).data,unlink:async()=> (await api.post('/telegram/unlink')).data};
+
 
 
 
