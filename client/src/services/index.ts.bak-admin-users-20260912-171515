@@ -1,4 +1,4 @@
-import {api,mockMode,setToken,clearToken} from './api';
+﻿import {api,mockMode,setToken,clearToken} from './api';
 import * as m from './mock';
 import type {
   PackagePlan,
@@ -959,37 +959,13 @@ export const adminService={
   getDashboard:()=>getOr<AdminDashboardData>(
     '/admin/dashboard',
     m.adminDashboard
-  ),  getUsers:()=>getOr<User[]>(
+  ),
+
+  getUsers:()=>getOr<User[]>(
     '/admin/users',
     [m.mockAdmin,m.mockUser],
     'users'
   ),
-
-  async changeUserPassword(userId:string,password:string){
-    if(mockMode){
-      return delay({message:'User password updated successfully'});
-    }
-
-    return (
-      await api.patch(
-        `/admin/users/${userId}/password`,
-        {password}
-      )
-    ).data;
-  },
-
-  async updateUserStatus(userId:string,status:'ACTIVE'|'SUSPENDED'){
-    if(mockMode){
-      return delay({message:'User status updated successfully'});
-    }
-
-    return (
-      await api.patch(
-        `/admin/users/${userId}/status`,
-        {status}
-      )
-    ).data;
-  },
 
   getDeposits:()=>getOr<Deposit[]>(
     '/admin/deposits',

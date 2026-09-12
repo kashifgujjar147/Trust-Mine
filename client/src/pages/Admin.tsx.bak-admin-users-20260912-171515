@@ -1,4 +1,4 @@
-import {formatMoney} from '../config/currency';
+﻿import {formatMoney} from '../config/currency';
 import AdminSupport from '../components/AdminSupport';
 import {FormEvent,ReactNode,useEffect,useState} from 'react';
 import {adminService} from '../services';
@@ -626,35 +626,13 @@ export default function Admin(){
               <tr key={u._id}>
                 <td>
                   <b>{u.fullName}</b>
-                  <small>{u.email} · {u.userId}</small>
+                  <small>{u.email} Â· {u.userId}</small>
                 </td>
 
                 <td>{u.role}</td>
 
                 <td>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <StatusBadge status={u.status}/>
-
-                    <button
-                      type="button"
-                      className="button"
-                      onClick={async()=>{
-                        try{
-                          await adminService.updateUserStatus(
-                            u._id,
-                            u.status==='ACTIVE'
-                              ? 'SUSPENDED'
-                              : 'ACTIVE'
-                          );
-                          await load();
-                        }catch(e){
-                          setError((e as Error).message);
-                        }
-                      }}
-                    >
-                      {u.status==='ACTIVE' ? 'Block' : 'Unblock'}
-                    </button>
-                  </div>
+                  <StatusBadge status={u.status}/>
                 </td>
 
                 <td>{u.referralCode}</td>
@@ -1026,7 +1004,7 @@ function ReviewDeposits({
         <SearchBar
           value={q}
           onChange={setQ}
-          placeholder="Search deposit or reference…"
+          placeholder="Search deposit or referenceâ€¦"
         />
 
         <select
@@ -1048,7 +1026,7 @@ function ReviewDeposits({
               <small>{d.reference||'No reference'}</small>
             </td>
 
-            <td>{d.packageName||'—'}</td>
+            <td>{d.packageName||'â€”'}</td>
 
             <td>{formatMoney(d.amount,currency)}</td>
 
@@ -1177,7 +1155,7 @@ function ReviewWithdrawals({
         <SearchBar
           value={q}
           onChange={setQ}
-          placeholder="Search withdrawal…"
+          placeholder="Search withdrawalâ€¦"
         />
 
         <select
@@ -1353,8 +1331,8 @@ function CrudPromos({
             </td>
 
             <td>
-              {p.usageLimit??'∞'} /
-              user {p.perUserLimit??'∞'}
+              {p.usageLimit??'âˆž'} /
+              user {p.perUserLimit??'âˆž'}
             </td>
 
             <td>
