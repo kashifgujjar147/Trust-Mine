@@ -3242,7 +3242,21 @@ export async function tickets(
 
   res.json({
     tickets:
-      rows
+      rows.map((ticket:any)=>({
+        ...ticket,
+
+        _id:
+          String(ticket._id),
+
+        userId:
+          String(ticket.userId),
+
+        unreadForUser:
+          Number(ticket.unreadForUser || 0),
+
+        unreadForAdmin:
+          Number(ticket.unreadForAdmin || 0)
+      }))
   });
 }
 
@@ -4384,10 +4398,12 @@ export async function adminSupportSendMessage(
       message
     });
 
-  ticket.status =
-    ticket.status === 'OPEN'
-      ? 'IN_PROGRESS'
-      : ticket.status;
+  // An admin reply must keep the conversation visible to the user.
+  // OPEN -> IN_PROGRESS, while already IN_PROGRESS remains active.
+  // Never resolve the ticket just because an admin replied.
+  if(ticket.status === 'OPEN'){
+    ticket.status = 'IN_PROGRESS';
+  }
 
   ticket.lastMessageAt =
     new Date();
@@ -6659,6 +6675,8 @@ export async function adminUpdateUserStatus(
     user: updatedUser
   });
 }
+
+
 
 
 
