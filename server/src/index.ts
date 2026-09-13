@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -22,7 +22,7 @@ app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || origin === 'https://trustmineshop.vercel.app' || allowedOrigins.map(x => x.replace(/\/$/, '')).includes(origin.replace(/\/$/, '')))  {
+      if (!origin || allowedOrigins.map(x => x.replace(/\/$/, '')).includes(origin.replace(/\/$/, '')))  {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
