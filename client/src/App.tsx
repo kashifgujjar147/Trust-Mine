@@ -3,7 +3,7 @@ import {Suspense} from 'react';
 import {AuthProvider} from './context/AuthContext';
 import AppLayout from './layouts/AppLayout';
 import Protected,{AdminOnly} from './routes/Protected';
-import LoginPage,{Register,ForgotPassword,ResetPassword} from './pages/Auth';
+import {Login as LoginPage,Register,ForgotPassword,ResetPassword} from './pages/Auth';
 import Dashboard from './pages/Dashboard';
 import Packages from './pages/Packages';
 import Deposit from './pages/Deposit';
