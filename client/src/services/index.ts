@@ -1,4 +1,4 @@
-import {api,mockMode,setToken,clearToken} from './api';
+﻿import {api,mockMode,setToken,clearToken} from './api';
 import * as m from './mock';
 import type {
   PackagePlan,
@@ -181,6 +181,53 @@ export const depositService={
     )
   ).data;
  },
+  getPackages:async()=>{
+    return (
+      await api.get('/admin/packages')
+    ).data.packages ?? [];
+  },
+
+  getWithdrawals:async()=>{
+    return (
+      await api.get('/admin/withdrawals')
+    ).data.withdrawals ?? [];
+  },
+
+  getTransactions:async()=>{
+    return (
+      await api.get('/admin/transactions')
+    ).data.transactions ?? [];
+  },
+
+  getPaymentMethods:async()=>{
+    return (
+      await api.get('/admin/payment-methods')
+    ).data.methods ?? [];
+  },
+
+  getPromos:async()=>{
+    return (
+      await api.get('/admin/promo')
+    ).data.promos ?? [];
+  },
+
+  getRewards:async()=>{
+    return (
+      await api.get('/admin/rewards')
+    ).data.rewards ?? [];
+  },
+
+  getSettings:async()=>{
+    return (
+      await api.get('/admin/settings')
+    ).data;
+  },
+
+  getSupportTickets:async()=>{
+    return (
+      await api.get('/admin/support')
+    ).data.tickets ?? [];
+  },
 
   getDeposits:()=>getOr<Deposit[]>(
     '/deposits',
@@ -1047,6 +1094,53 @@ export const adminService={
       )
     ).data;
   },
+  getPackages:async()=>{
+    return (
+      await api.get('/admin/packages')
+    ).data.packages ?? [];
+  },
+
+  getWithdrawals:async()=>{
+    return (
+      await api.get('/admin/withdrawals')
+    ).data.withdrawals ?? [];
+  },
+
+  getTransactions:async()=>{
+    return (
+      await api.get('/admin/transactions')
+    ).data.transactions ?? [];
+  },
+
+  getPaymentMethods:async()=>{
+    return (
+      await api.get('/admin/payment-methods')
+    ).data.methods ?? [];
+  },
+
+  getPromos:async()=>{
+    return (
+      await api.get('/admin/promo')
+    ).data.promos ?? [];
+  },
+
+  getRewards:async()=>{
+    return (
+      await api.get('/admin/rewards')
+    ).data.rewards ?? [];
+  },
+
+  getSettings:async()=>{
+    return (
+      await api.get('/admin/settings')
+    ).data;
+  },
+
+  getSupportTickets:async()=>{
+    return (
+      await api.get('/admin/support')
+    ).data.tickets ?? [];
+  },
 
   getDeposits:()=>getOr<Deposit[]>(
     '/admin/deposits',
@@ -1828,6 +1922,7 @@ export const apiServices={
 };
 
 export const telegramService={linkCode:async()=> (await api.post('/telegram/link-code')).data,unlink:async()=> (await api.post('/telegram/unlink')).data};
+
 
 
 

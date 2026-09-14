@@ -626,7 +626,7 @@ export default function Admin(){
               <tr key={u._id}>
                 <td>
                   <b>{u.fullName}</b>
-                  <small>{u.email} Â· {u.userId}</small>
+                  <small>{u.email} · {u.userId}</small>
                 </td>
 
                 <td>{u.role}</td>
@@ -1121,7 +1121,7 @@ function ReviewDeposits({
         <SearchBar
           value={q}
           onChange={setQ}
-          placeholder="Search deposit or referenceâ€¦"
+          placeholder="Search deposit or reference…"
         />
 
         <select
@@ -1143,7 +1143,7 @@ function ReviewDeposits({
               <small>{d.reference||'No reference'}</small>
             </td>
 
-            <td>{d.packageName||'â€”'}</td>
+            <td>{d.packageName||'—'}</td>
 
             <td>{formatMoney(d.amount,currency)}</td>
 
@@ -1281,7 +1281,7 @@ function ReviewWithdrawals({
         <SearchBar
           value={q}
           onChange={setQ}
-          placeholder="Search withdrawalâ€¦"
+          placeholder="Search withdrawal…"
         />
 
         <select
@@ -1457,8 +1457,8 @@ function CrudPromos({
             </td>
 
             <td>
-              {p.usageLimit??'âˆž'} /
-              user {p.perUserLimit??'âˆž'}
+              {p.usageLimit??'∞'} /
+              user {p.perUserLimit??'∞'}
             </td>
 
             <td>
@@ -1716,6 +1716,8 @@ function SettingsPanel({
     </div>
   );
 }
+
+
 
 
 

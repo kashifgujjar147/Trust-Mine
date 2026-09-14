@@ -3224,302 +3224,165 @@ export async function tickets(
   req: AuthedRequest,
   res: Response
 ) {
+  const rows = await SupportTicket.find({
+    userId: req.user!.id
+  })
+    .sort({ lastMessageAt: -1, createdAt: -1 })
+    .limit(100)
+    .lean();
 
-  const rows =
-    await SupportTicket.find({
-      userId:
-        req.user!.id
-    })
-      .sort({
-        lastMessageAt:
-          -1,
-
-        createdAt:
-          -1
-      })
-      .limit(100)
-      .lean();
-
-  res.json({
-    tickets:
-      rows.map((ticket:any)=>({
-        ...ticket,
-
-        _id:
-          String(ticket._id),
-
-        userId:
-          String(ticket.userId),
-
-        unreadForUser:
-          Number(ticket.unreadForUser || 0),
-
-        unreadForAdmin:
-          Number(ticket.unreadForAdmin || 0)
-      }))
-  });
+  res.json({ tickets: rows });
 }
-
 
 export async function createTicket(
   req: AuthedRequest,
   res: Response
 ) {
+  const subject = String(req.body.subject ?? '').trim();
+  const message = String(req.body.message ?? '').trim();
 
-  const subject =
-    String(
-      req.body.subject
-    ).trim();
+  if (!subject) {
+    res.status(400).json({ message: 'Subject is required' });
+    return;
+  }
 
-  const message =
-    String(
-      req.body.message
-    ).trim();
+  if (!message) {
+    res.status(400).json({ message: 'Message is required' });
+    return;
+  }
 
-  const t =
-    await SupportTicket.create({
-      userId:
-        req.user!.id,
-
-      subject,
-
-      message,
-
-      status:
-        'OPEN',
-
-      lastMessageAt:
-        new Date(),
-
-      lastMessagePreview:
-        message.slice(0,160),
-
-      unreadForUser:
-        0,
-
-      unreadForAdmin:
-        1
-    });
+  // Create the ticket first, then its first message. If message creation
+  // fails, remove the ticket so we never leave a broken conversation behind.
+  const ticket = await SupportTicket.create({
+    userId: req.user!.id,
+    subject,
+    message,
+    status: 'OPEN',
+    lastMessageAt: new Date(),
+    lastMessagePreview: message.slice(0, 160),
+    unreadForUser: 0,
+    unreadForAdmin: 1
+  });
 
   try {
-
     await SupportMessage.create({
-      ticketId:
-        t._id,
-
-      senderId:
-        req.user!.id,
-
-      senderRole:
-        'USER',
-
+      ticketId: ticket._id,
+      senderId: req.user!.id,
+      senderRole: 'USER',
       message
     });
-
-  } catch(error) {
-
-    await SupportTicket.deleteOne({
-      _id:
-        t._id
-    });
-
+  } catch (error) {
+    await SupportTicket.deleteOne({ _id: ticket._id });
     throw error;
   }
 
-  res.status(201).json(t);
+  res.status(201).json(ticket);
 }
-
 
 export async function supportMessages(
   req: AuthedRequest,
   res: Response
 ) {
+  const ticket = await SupportTicket.findOne({
+    _id: req.params.id,
+    userId: req.user!.id
+  }).lean();
 
-  const ticket =
-    await SupportTicket.findOne({
-      _id:
-        req.params.id,
-
-      userId:
-        req.user!.id
-    }).lean();
-
-  if(!ticket){
-
-    res.status(404).json({
-      message:
-        'Support ticket not found'
-    });
-
+  if (!ticket) {
+    res.status(404).json({ message: 'Support ticket not found' });
     return;
   }
 
-  const messages =
-    await SupportMessage.find({
-      ticketId:
-        ticket._id
-    })
-      .sort({
-        createdAt:
-          1
-      })
-      .lean();
+  const messages = await SupportMessage.find({
+    ticketId: ticket._id
+  })
+    .sort({ createdAt: 1 })
+    .lean();
 
-  if(messages.length === 0 && ticket.message){
-
+  if (messages.length === 0 && ticket.message) {
     res.json({
-      messages:[
-        {
-          _id:
-            `legacy-${String(ticket._id)}`,
-
-          ticketId:
-            String(ticket._id),
-
-          senderId:
-            String(ticket.userId),
-
-          senderRole:
-            'USER',
-
-          message:
-            ticket.message,
-
-          createdAt:
-            new Date()
-        }
-      ]
+      messages: [{
+        _id: `legacy-${String(ticket._id)}`,
+        ticketId: String(ticket._id),
+        senderId: String(ticket.userId),
+        senderRole: 'USER',
+        message: ticket.message,
+        createdAt: ticket.lastMessageAt ?? new Date()
+      }]
     });
-
     return;
   }
 
-  res.json({
-    messages
-  });
+  res.json({ messages });
 }
-
 
 export async function supportSendMessage(
   req: AuthedRequest,
   res: Response
 ) {
+  const message = String(req.body.message ?? '').trim();
 
-  const message =
-    String(
-      req.body.message
-    ).trim();
-
-  const ticket =
-    await SupportTicket.findOne({
-      _id:
-        req.params.id,
-
-      userId:
-        req.user!.id
-    });
-
-  if(!ticket){
-
-    res.status(404).json({
-      message:
-        'Support ticket not found'
-    });
-
+  if (!message) {
+    res.status(400).json({ message: 'Message is required' });
     return;
   }
 
-  if(ticket.status === 'RESOLVED'){
+  const ticket = await SupportTicket.findOne({
+    _id: req.params.id,
+    userId: req.user!.id
+  });
 
+  if (!ticket) {
+    res.status(404).json({ message: 'Support ticket not found' });
+    return;
+  }
+
+  if (ticket.status === 'RESOLVED') {
     res.status(409).json({
-      message:
-        'This support ticket is resolved. Start a new conversation.'
+      message: 'This support ticket is resolved. Start a new conversation.'
     });
-
     return;
   }
 
-  const created =
-    await SupportMessage.create({
-      ticketId:
-        ticket._id,
+  const now = new Date();
+  const created = await SupportMessage.create({
+    ticketId: ticket._id,
+    senderId: req.user!.id,
+    senderRole: 'USER',
+    message
+  });
 
-      senderId:
-        req.user!.id,
-
-      senderRole:
-        'USER',
-
-      message
-    });
-
-  ticket.lastMessageAt =
-    new Date();
-
-  ticket.lastMessagePreview =
-    message.slice(0,160);
-
-  ticket.unreadForAdmin =
-    Number(ticket.unreadForAdmin || 0) + 1;
-
-  ticket.unreadForUser =
-    0;
-
+  // A user reply re-opens an active conversation and notifies support.
+  ticket.status = 'OPEN';
+  ticket.lastMessageAt = now;
+  ticket.lastMessagePreview = message.slice(0, 160);
+  ticket.unreadForAdmin = Number(ticket.unreadForAdmin || 0) + 1;
+  ticket.unreadForUser = 0;
   await ticket.save();
 
-  res.status(201).json({
-    message:
-      created
-  });
+  res.status(201).json({ message: created, ticket });
 }
-
 
 export async function supportMarkRead(
   req: AuthedRequest,
   res: Response
 ) {
+  const updated = await SupportTicket.findOneAndUpdate(
+    { _id: req.params.id, userId: req.user!.id },
+    { $set: { unreadForUser: 0 } },
+    { new: true }
+  ).lean();
 
-  const updated =
-    await SupportTicket.findOneAndUpdate(
-      {
-        _id:
-          req.params.id,
-
-        userId:
-          req.user!.id
-      },
-      {
-        $set:{
-          unreadForUser:
-            0
-        }
-      },
-      {
-        new:
-          true
-      }
-    ).lean();
-
-  if(!updated){
-
-    res.status(404).json({
-      message:
-        'Support ticket not found'
-    });
-
+  if (!updated) {
+    res.status(404).json({ message: 'Support ticket not found' });
     return;
   }
 
-  res.json({
-    ticket:
-      updated
-  });
+  res.json({ ticket: updated });
 }
 
 
-/* =========================================================
-   SETTINGS
-========================================================= */
+
 
 export async function settings(
   _req: Request,
@@ -3535,6 +3398,7 @@ export async function settings(
 /* =========================================================
    ADMIN DASHBOARD
 ========================================================= */
+
 
 export async function adminDashboard(
   _req: Request,
@@ -3794,6 +3658,7 @@ export async function adminDashboard(
    ADMIN USERS / PACKAGES / DEPOSITS
 ========================================================= */
 
+
 export async function adminUsers(
   _req: Request,
   res: Response
@@ -3802,18 +3667,6 @@ export async function adminUsers(
   res.json({
     users:
       await User.find().select('-passwordHash').limit(100).lean()
-  });
-}
-
-
-export async function adminPackages(
-  _req: Request,
-  res: Response
-) {
-
-  res.json({
-    packages:
-      await Package.find().limit(100).lean()
   });
 }
 
@@ -3861,6 +3714,7 @@ export async function adminDeposits(
 /* =========================================================
    ADMIN DEPOSIT REJECT
 ========================================================= */
+
 
 export async function adminDepositReject(
   req: AuthedRequest,
@@ -4083,22 +3937,29 @@ export async function adminDepositReject(
    ADMIN WITHDRAWALS / TRANSACTIONS
 ========================================================= */
 
+export async function adminPackages(
+  _req: Request,
+  res: Response
+) {
+  res.json({
+    packages:
+      await Package.find().limit(100).lean()
+  });
+}
+
+
 export async function adminWithdrawals(
   _req: Request,
   res: Response
 ) {
-
   const withdrawals = await Withdrawal.find()
-      .sort({
-        createdAt:
-          -1
-      })
-      .limit(100)
-      .populate(
-        'userId',
-        'fullName email userId'
-      )
-      .lean();
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .populate(
+      'userId',
+      'fullName email userId'
+    )
+    .lean();
 
   return res.json({
     withdrawals
@@ -4110,13 +3971,10 @@ export async function adminTransactions(
   _req: Request,
   res: Response
 ) {
-
-  const transactions = await Transaction.find().sort({
-        createdAt:
-          -1
-      })
-      .limit(500)
-      .lean();
+  const transactions = await Transaction.find()
+    .sort({ createdAt: -1 })
+    .limit(500)
+    .lean();
 
   return res.json({
     transactions
@@ -4128,15 +3986,10 @@ export async function adminPaymentMethods(
   _req: Request,
   res: Response
 ) {
-
-  const methods =
-    await PaymentMethod.find()
-      .sort({
-        displayOrder:
-          1
-      })
-      .limit(100)
-      .lean();
+  const methods = await PaymentMethod.find()
+    .sort({ displayOrder: 1 })
+    .limit(100)
+    .lean();
 
   return res.json({
     methods
@@ -4148,15 +4001,10 @@ export async function adminPromos(
   _req: Request,
   res: Response
 ) {
-
-  const promos =
-    await PromoCode.find()
-      .sort({
-        createdAt:
-          -1
-      })
-      .limit(100)
-      .lean();
+  const promos = await PromoCode.find()
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean();
 
   return res.json({
     promos
@@ -4168,7 +4016,6 @@ export async function adminRewards(
   _req: Request,
   res: Response
 ) {
-
   res.json({
     rewards:
       await Reward.find()
@@ -4183,7 +4030,6 @@ export async function adminSettings(
   _req: Request,
   res: Response
 ) {
-
   res.json(
     await getSettings()
   );
@@ -4194,7 +4040,6 @@ export async function adminAuditLogs(
   _req: Request,
   res: Response
 ) {
-
   res.json({
     logs:
       await AuditLog.find()
@@ -4209,7 +4054,6 @@ export async function adminNotifications(
   _req: Request,
   res: Response
 ) {
-
   res.json({
     notifications:
       await Notification.find()
@@ -4219,286 +4063,157 @@ export async function adminNotifications(
   });
 }
 
-
 export async function adminTickets(
   _req: Request,
   res: Response
 ) {
-
-  const rows =
-    await SupportTicket.find()
-      .sort({
-        unreadForAdmin:
-          -1,
-
-        lastMessageAt:
-          -1,
-
-        createdAt:
-          -1
-      })
-      .limit(500)
-      .populate({
-        path:
-          'userId',
-
-        select:
-          'fullName email userId'
-      })
-      .lean();
+  const rows = await SupportTicket.find()
+    .sort({
+      unreadForAdmin: -1,
+      lastMessageAt: -1,
+      createdAt: -1
+    })
+    .limit(500)
+    .populate({
+      path: 'userId',
+      select: 'fullName email userId'
+    })
+    .lean();
 
   res.json({
-    tickets:
-      rows.map(
-        (ticket:any)=>({
-
-          ...ticket,
-
-          user:
-            ticket.userId &&
-            typeof ticket.userId === 'object'
-              ? {
-                  _id:
-                    String(ticket.userId._id),
-
-                  fullName:
-                    ticket.userId.fullName,
-
-                  email:
-                    ticket.userId.email,
-
-                  userId:
-                    ticket.userId.userId
-                }
-              : undefined,
-
-          userId:
-            ticket.userId &&
-            typeof ticket.userId === 'object'
-              ? String(ticket.userId._id)
-              : String(ticket.userId)
-        })
-      )
+    tickets: rows.map((ticket: any) => ({
+      ...ticket,
+      user:
+        ticket.userId && typeof ticket.userId === 'object'
+          ? {
+              _id: String(ticket.userId._id),
+              fullName: ticket.userId.fullName,
+              email: ticket.userId.email,
+              userId: ticket.userId.userId
+            }
+          : undefined,
+      userId:
+        ticket.userId && typeof ticket.userId === 'object'
+          ? String(ticket.userId._id)
+          : String(ticket.userId)
+    }))
   });
 }
-
 
 export async function adminSupportMessages(
   _req: Request,
   res: Response
 ) {
+  const ticket = await SupportTicket.findById(_req.params.id).lean();
 
-  const ticket =
-    await SupportTicket.findById(
-      _req.params.id
-    ).lean();
-
-  if(!ticket){
-
-    res.status(404).json({
-      message:
-        'Support ticket not found'
-    });
-
+  if (!ticket) {
+    res.status(404).json({ message: 'Support ticket not found' });
     return;
   }
 
-  const messages =
-    await SupportMessage.find({
-      ticketId:
-        ticket._id
-    })
-      .sort({
-        createdAt:
-          1
-      })
-      .lean();
+  const messages = await SupportMessage.find({
+    ticketId: ticket._id
+  })
+    .sort({ createdAt: 1 })
+    .lean();
 
-  if(messages.length === 0 && ticket.message){
-
+  if (messages.length === 0 && ticket.message) {
     res.json({
-      messages:[
-        {
-          _id:
-            `legacy-${String(ticket._id)}`,
-
-          ticketId:
-            String(ticket._id),
-
-          senderId:
-            String(ticket.userId),
-
-          senderRole:
-            'USER',
-
-          message:
-            ticket.message,
-
-          createdAt:
-            new Date()
-        }
-      ]
+      messages: [{
+        _id: `legacy-${String(ticket._id)}`,
+        ticketId: String(ticket._id),
+        senderId: String(ticket.userId),
+        senderRole: 'USER',
+        message: ticket.message,
+        createdAt: ticket.lastMessageAt ?? new Date()
+      }]
     });
-
     return;
   }
 
-  res.json({
-    messages
-  });
+  res.json({ messages });
 }
-
 
 export async function adminSupportSendMessage(
   req: AuthedRequest,
   res: Response
 ) {
+  const message = String(req.body.message ?? '').trim();
 
-  const message =
-    String(
-      req.body.message
-    ).trim();
-
-  const ticket =
-    await SupportTicket.findById(
-      req.params.id
-    );
-
-  if(!ticket){
-
-    res.status(404).json({
-      message:
-        'Support ticket not found'
-    });
-
+  if (!message) {
+    res.status(400).json({ message: 'Message is required' });
     return;
   }
 
-  if(ticket.status === 'RESOLVED'){
+  const ticket = await SupportTicket.findById(req.params.id);
 
-    res.status(409).json({
-      message:
-        'This support ticket is resolved. Reopen it before replying.'
-    });
-
+  if (!ticket) {
+    res.status(404).json({ message: 'Support ticket not found' });
     return;
   }
 
-  const created =
-    await SupportMessage.create({
-      ticketId:
-        ticket._id,
+  // IMPORTANT: an admin reply must be allowed even when the ticket was
+  // previously marked RESOLVED. The reply itself re-opens the conversation.
+  const now = new Date();
+  const created = await SupportMessage.create({
+    ticketId: ticket._id,
+    senderId: req.user!.id,
+    senderRole: 'ADMIN',
+    message
+  });
 
-      senderId:
-        req.user!.id,
-
-      senderRole:
-        'ADMIN',
-
-      message
-    });
-
-  // An admin reply must keep the conversation visible to the user.
-  // OPEN -> IN_PROGRESS, while already IN_PROGRESS remains active.
-  // Never resolve the ticket just because an admin replied.
-  if(ticket.status === 'OPEN'){
-    ticket.status = 'IN_PROGRESS';
-  }
-
-  ticket.lastMessageAt =
-    new Date();
-
-  ticket.lastMessagePreview =
-    message.slice(0,160);
-
-  ticket.unreadForUser =
-    Number(ticket.unreadForUser || 0) + 1;
-
-  ticket.unreadForAdmin =
-    0;
-
+  ticket.status = 'OPEN';
+  ticket.lastMessageAt = now;
+  ticket.lastMessagePreview = message.slice(0, 160);
+  ticket.unreadForUser = Number(ticket.unreadForUser || 0) + 1;
+  ticket.unreadForAdmin = 0;
   await ticket.save();
 
-  res.status(201).json({
-    message:
-      created,
-
-    ticket
-  });
+  res.status(201).json({ message: created, ticket });
 }
-
 
 export async function adminSupportMarkRead(
   req: AuthedRequest,
   res: Response
 ) {
+  const updated = await SupportTicket.findByIdAndUpdate(
+    req.params.id,
+    { $set: { unreadForAdmin: 0 } },
+    { new: true }
+  ).lean();
 
-  const updated =
-    await SupportTicket.findByIdAndUpdate(
-      req.params.id,
-      {
-        $set:{
-          unreadForAdmin:
-            0
-        }
-      },
-      {
-        new:
-          true
-      }
-    ).lean();
-
-  if(!updated){
-
-    res.status(404).json({
-      message:
-        'Support ticket not found'
-    });
-
+  if (!updated) {
+    res.status(404).json({ message: 'Support ticket not found' });
     return;
   }
 
-  res.json({
-    ticket:
-      updated
-  });
+  res.json({ ticket: updated });
 }
-
 
 export async function adminSupportStatus(
   req: AuthedRequest,
   res: Response
 ) {
+  const status = String(req.body.status ?? '').trim();
+  const allowed = new Set(['OPEN', 'IN_PROGRESS', 'RESOLVED']);
 
-  const updated =
-    await SupportTicket.findByIdAndUpdate(
-      req.params.id,
-      {
-        $set:{
-          status:
-            req.body.status
-        }
-      },
-      {
-        new:
-          true
-      }
-    ).lean();
-
-  if(!updated){
-
-    res.status(404).json({
-      message:
-        'Support ticket not found'
-    });
-
+  if (!allowed.has(status)) {
+    res.status(400).json({ message: 'Invalid support ticket status' });
     return;
   }
 
-  res.json({
-    ticket:
-      updated
-  });
+  const updated = await SupportTicket.findByIdAndUpdate(
+    req.params.id,
+    { $set: { status } },
+    { new: true, runValidators: true }
+  ).lean();
+
+  if (!updated) {
+    res.status(404).json({ message: 'Support ticket not found' });
+    return;
+  }
+
+  res.json({ ticket: updated });
 }
 
 
