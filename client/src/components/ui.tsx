@@ -1,7 +1,7 @@
 import {ReactNode} from 'react';
 export function Button({children,onClick,type='button',variant='gold',disabled=false,loading=false}:{children:ReactNode;onClick?:()=>void;type?:'button'|'submit';variant?:'gold'|'ghost'|'danger';disabled?:boolean;loading?:boolean}){return <button className={`btn ${variant}`} onClick={onClick} type={type} disabled={disabled||loading}>{loading?'Working…':children}</button>}
 export function Card({children,className='' }:{children:ReactNode;className?:string}){return <section className={`card ${className}`}>{children}</section>}
-export function StatusBadge({status}:{status:string}){return <span className={`status ${status.toLowerCase()}`}>{status.replace('_',' ')}</span>}
+export function StatusBadge({status}:{status?:string}){const safeStatus=status||'UNKNOWN';return <span className={`status ${safeStatus.toLowerCase()}`}>{safeStatus.replace('_','')}</span>}
 export function StatCard({label,value,icon,meta}:{label:string;value:string|number;icon?:ReactNode;meta?:string}){return <Card className="stat"><div className="stat-icon">{icon}</div><div><span>{label}</span><strong>{value}</strong>{meta&&<small>{meta}</small>}</div></Card>}
 export function PageState({type,message,onRetry}:{type:'loading'|'error'|'empty';message:string;onRetry?:()=>void}){return <div className={`page-state ${type}`}><div>{type==='loading'?'Loading…':type==='error'?'Something went wrong':'Nothing here yet'}</div><p>{message}</p>{onRetry&&<Button variant="ghost" onClick={onRetry}>Try again</Button>}</div>}
 export function Field({label,children,hint,error}:{label:string;children:ReactNode;hint?:string;error?:string}){return <label className="field"><span>{label}</span>{children}{hint&&<small>{hint}</small>}{error&&<em>{error}</em>}</label>}
