@@ -1151,10 +1151,19 @@ function ReviewDeposits({
 
             <td>
               {d.proofUrl ? (
-                <a
-                  href={d.proofUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  className="button"
+                  onClick={async()=>{
+                    try{
+                      await adminService.openPaymentProof(d.proofUrl!);
+                    }catch(e){
+                      setStatus(
+                        (e as Error).message ||
+                        'Could not open payment screenshot.'
+                      );
+                    }
+                  }}
                   style={{
                     display:'inline-flex',
                     alignItems:'center',
@@ -1162,7 +1171,7 @@ function ReviewDeposits({
                   }}
                 >
                   View Screenshot
-                </a>
+                </button>
               ) : (
                 <small>No proof</small>
               )}
@@ -1707,6 +1716,7 @@ function SettingsPanel({
     </div>
   );
 }
+
 
 
 

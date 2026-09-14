@@ -277,28 +277,48 @@ export const depositService={
 export const withdrawalService={
 
   async openPaymentProof(proofUrl:string){
-  const response = await api.get(
-    proofUrl,
-    {
-      responseType:'blob'
+    if(!proofUrl){
+      throw new Error('Payment screenshot is not available.');
     }
-  );
 
-  const objectUrl =
-    URL.createObjectURL(response.data);
+    const baseUrl=String(api.defaults.baseURL??'').replace(/\/$/,'');
+    const normalizedUrl=
+      baseUrl.endsWith('/api') && proofUrl.startsWith('/api/')
+        ? proofUrl.slice(4)
+        : proofUrl;
 
-  window.open(
-    objectUrl,
-    '_blank',
-    'noopener,noreferrer'
-  );
+    const tab=window.open('about:blank','_blank');
 
-  window.setTimeout(
-    () => URL.revokeObjectURL(objectUrl),
-    60000
-  );
-},
-getWithdrawals:()=>getOr<Withdrawal[]>(
+    if(!tab){
+      throw new Error(
+        'Please allow pop-ups for this site to view the payment screenshot.'
+      );
+    }
+
+    try{
+      if(proofUrl.startsWith('blob:')){
+        tab.location.href=proofUrl;
+        return;
+      }
+
+      const response=await api.get(normalizedUrl,{
+        responseType:'blob',
+        headers:{'x-no-cache':'1'}
+      });
+
+      const objectUrl=URL.createObjectURL(response.data);
+      tab.location.href=objectUrl;
+
+      window.setTimeout(
+        ()=>URL.revokeObjectURL(objectUrl),
+        60000
+      );
+    }catch(e){
+      tab.close();
+      throw e;
+    }
+  },
+  getWithdrawals:()=>getOr<Withdrawal[]>(
     '/withdrawals',
     m.withdrawals,
     'withdrawals'
