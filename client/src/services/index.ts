@@ -1055,71 +1055,27 @@ export const adminService={
   ),
 
   async openPaymentProof(proofUrl:string){
-  const response = await api.get(
-    proofUrl,
-    {
-      responseType:'blob'
+    if(!proofUrl){
+      throw new Error('Payment screenshot is not available.');
     }
-  );
 
-  const objectUrl =
-    URL.createObjectURL(response.data);
+    const baseUrl=String(api.defaults.baseURL??'').replace(/\/$/,'');
+    const normalizedUrl=
+      baseUrl.endsWith('/api') && proofUrl.startsWith('/api/')
+        ? proofUrl.slice(4)
+        : proofUrl;
 
-  window.open(
-    objectUrl,
-    '_blank',
-    'noopener,noreferrer'
-  );
+    const response = await api.get(
+      normalizedUrl,
+      {
+        responseType:'blob',
+        headers:{'x-no-cache':'1'}
+      }
+    );
 
-  window.setTimeout(
-    () => URL.revokeObjectURL(objectUrl),
-    60000
-  );
-},
-getWithdrawals:()=>getOr<Withdrawal[]>(
-    '/admin/withdrawals',
-    m.withdrawals,
-    'withdrawals'
-  ),
-
-  getTransactions:()=>getOr<Transaction[]>(
-    '/admin/transactions',
-    m.transactions,
-    'transactions'
-  ),
-
-  getPackages:()=>getOr<PackagePlan[]>(
-    '/admin/packages',
-    m.packages,
-    'packages'
-  ),
-
-  getPaymentMethods:()=>getOr<PaymentMethod[]>(
-    '/admin/payment-methods',
-    m.methods,
-    'methods'
-  ),
-
-  getRewards:()=>getOr<RewardTier[]>(
-    '/admin/rewards',
-    m.rewards,
-    'rewards'
-  ),
-
-  getPromos:()=>getOr<PromoCode[]>(
-    '/admin/promo',
-    m.promoCodes,
-    'promos'
-  ),
-
-  getSettings:()=>getOr<PlatformSettings>(
-    '/admin/settings',
-    m.settings
-  ),
-  getSupportTickets:async()=>{
-    return (
-      await api.get('/admin/support')
-    ).data;
+    const objectUrl = URL.createObjectURL(response.data);
+    window.open(objectUrl,'_blank','noopener,noreferrer');
+    window.setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
   },
 
   getSupportMessages:async(ticketId:string)=>{
