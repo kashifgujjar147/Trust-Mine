@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+﻿import { Request, Response } from 'express';
 import { User, PasswordResetToken } from '../models/index.js';
 import { hash, compare, sign } from '../utils/auth.js';
 import crypto from 'node:crypto';
@@ -8,6 +8,7 @@ import {
   profileSchema,
 } from '../validators/index.js';
 import { env } from '../config/env.js';
+import { sendPasswordResetEmail } from '../services/email.js';
 
 const uid = () =>
   `TM-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -108,20 +109,48 @@ export async function requestPasswordReset(req: Request, res: Response) {
     if (!user) return res.json(generic);
     await PasswordResetToken.deleteMany({userId:user._id, expiresAt:{$lte:new Date()}});
     const raw = crypto.randomBytes(32).toString('hex');
-    if (!env.PASSWORD_RESET_WEBHOOK_URL && env.NODE_ENV === 'production') {
-      console.error('[PASSWORD RESET] delivery provider is not configured');
+    if (
+      !env.SMTP_HOST ||
+      !env.SMTP_USER ||
+      !env.SMTP_PASS ||
+      !env.SMTP_FROM
+    ) {
+      console.error('[PASSWORD RESET] SMTP delivery is not configured');
       return res.json(generic);
     }
+
     const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
-    const expiresAt = new Date(Date.now()+env.PASSWORD_RESET_TOKEN_TTL_MINUTES*60*1000);
-    await PasswordResetToken.create({userId:user._id,tokenHash,expiresAt});
-    const resetUrl=`${env.CLIENT_URL}/reset-password?token=${raw}`;
-    if (!env.PASSWORD_RESET_WEBHOOK_URL) return res.json({...generic, resetUrl});
-    const response=await fetch(env.PASSWORD_RESET_WEBHOOK_URL,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({event:'password_reset',email,fullName:user.fullName,resetUrl,expiresAt:expiresAt.toISOString()})});
-    if(!response.ok) {
-      console.error('[PASSWORD RESET] delivery provider returned non-2xx', response.status);
+    const expiresAt = new Date(
+      Date.now() + env.PASSWORD_RESET_TOKEN_TTL_MINUTES * 60 * 1000
+    );
+
+    await PasswordResetToken.create({
+      userId: user._id,
+      tokenHash,
+      expiresAt,
+    });
+
+    const resetUrl = `${env.CLIENT_URL}/reset-password?token=${raw}`;
+
+    try {
+      await sendPasswordResetEmail(
+        email,
+        user.fullName,
+        resetUrl,
+        expiresAt,
+      );
+    } catch (emailError: any) {
+      await PasswordResetToken.deleteOne({ tokenHash });
+
+      console.error('[PASSWORD RESET] email delivery failed', {
+        name: emailError?.name,
+        message: emailError?.message,
+        code: emailError?.code,
+      });
+
       return res.json(generic);
     }
+
     return res.json(generic);
   } catch (e:any) {
     console.error('[PASSWORD RESET REQUEST ERROR]', {name:e?.name,message:e?.message,code:e?.code});
