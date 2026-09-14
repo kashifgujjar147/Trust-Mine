@@ -3,7 +3,7 @@ import {useNavigate} from 'react-router-dom';
 import {useAuth} from '../context/AuthContext';
 import {depositService,withdrawalService,transactionService,teamService,rewardService,promoService,settingsService,notificationService,supportService,paymentMethodService,packageService,userService,telegramService,dashboardService} from '../services';
 import {Card,Button,Field,PageState,Progress,StatusBadge,SearchBar} from '../components/ui';
-import type {Deposit,PackagePlan,Transaction,TeamMember,RewardTier,PromoCode,PlatformSettings,Notification,SupportTicket,Withdrawal as WithdrawalRecord,PaymentMethod,User} from '../types';
+import type {Deposit,PackagePlan,Transaction,TeamMember,RewardTier,PromoCode,PlatformSettings,Notification,SupportTicket,SupportMessage,Withdrawal as WithdrawalRecord,PaymentMethod,User} from '../types';
 import {Copy,Check,ArrowRight,Send,LifeBuoy,CheckCircle,RefreshCw} from 'lucide-react';import {formatMoney} from '../config/currency';
 
 function Shell({eyebrow,title,description,actions,children}:{eyebrow:string;title:string;description:string;actions?:ReactNode;children:ReactNode}){return <div className="page"><div className="page-head"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{actions&&<div className="actions">{actions}</div>}</div>{children}</div>}
@@ -102,47 +102,522 @@ export function Notifications(){const [items,setItems]=useState<Notification[]>(
 
 export function Activity(){return <Shell eyebrow="SECURITY" title="Activity History" description="Account activity history is not currently exposed by the backend."><Card><div className="empty">Activity history is currently unavailable. No simulated or placeholder security events are shown.</div></Card></Shell>}
 
-export function Support(){const [tickets,setTickets]=useState<SupportTicket[]>([]),[subject,setSubject]=useState(''),[message,setMessage]=useState(''),[done,setDone]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(false);useEffect(()=>{supportService.getTickets().then(setTickets).catch(e=>setError(e.message||'Unable to load tickets.'))},[]);const submit=async(e:FormEvent)=>{e.preventDefault();setLoading(true);setError('');try{const response=await supportService.createTicket({subject,message});const t=(response?.ticket||response?.data?.ticket||response?.data||response);setTickets(x=>[...(Array.isArray(x)?x:[]),t]);setSubject('');setMessage('');setDone('Ticket created successfully.')}catch(e){setError((e as Error).message||'Unable to create ticket.')}finally{setLoading(false)}};return <Shell eyebrow="HELP" title="Support" description="FAQs, contact support and ticket history.">{error&&<p className="error">{error}</p>}<div className="grid2"><Card><h3>Frequently asked</h3><div className="faq"><details><summary>When does a package cycle start?</summary><p>After backend verification marks the associated deposit completed, activation and cycle timestamps are created server-side.</p></details><details><summary>Can I activate a package manually?</summary><p>No. The intended architecture automatically activates it after verified payment.</p></details><details><summary>Are dashboard timers authoritative?</summary><p>No. They are presentation-only and never credit financial value.</p></details></div></Card><Card><h3>Customer Support</h3>
-<p className="muted-copy">Contact TRUST MINE through our support channels or start a conversation with support.</p>
+export function Support(){
+  const [tickets,setTickets]=useState<SupportTicket[]>([]);
+  const [selected,setSelected]=useState<SupportTicket|null>(null);
+  const [messages,setMessages]=useState<SupportMessage[]>([]);
+  const [subject,setSubject]=useState('');
+  const [message,setMessage]=useState('');
+  const [reply,setReply]=useState('');
+  const [done,setDone]=useState('');
+  const [error,setError]=useState('');
+  const [loading,setLoading]=useState(true);
+  const [messagesLoading,setMessagesLoading]=useState(false);
+  const [sending,setSending]=useState(false);
 
-<div className="actions" style={{marginBottom:'18px'}}>
-  <a
-    className="btn"
-    href="https://whatsapp.com/channel/0029Vb8r8KN4dTnFwnDT2J0D"
-    target="_blank"
-    rel="noreferrer"
-  >
-    WhatsApp Channel
-  </a>
+  const normalizeTickets=(value:any):SupportTicket[]=>{
+    if(Array.isArray(value)) return value;
+    if(Array.isArray(value?.tickets)) return value.tickets;
+    if(Array.isArray(value?.data)) return value.data;
+    if(Array.isArray(value?.data?.tickets)) return value.data.tickets;
+    return [];
+  };
 
-  <a
-    className="btn"
-    href="https://wa.me/000000000000"
-    target="_blank"
-    rel="noreferrer"
-  >
-    WhatsApp Contact
-  </a>
+  const normalizeMessages=(value:any):SupportMessage[]=>{
+    const raw=Array.isArray(value)
+      ? value
+      : Array.isArray(value?.messages)
+        ? value.messages
+        : Array.isArray(value?.data)
+          ? value.data
+          : Array.isArray(value?.data?.messages)
+            ? value.data.messages
+            : [];
 
-  <a
-    className="btn"
-    href="https://t.me/trustmine_demo"
-    target="_blank"
-    rel="noreferrer"
-  >
-    Telegram
-  </a>
-</div>
+    return raw
+      .map((item:any)=>{
+        const nested=item?.message;
 
-<p className="muted-copy">
-  WhatsApp contact and Telegram links are temporary placeholders and can be replaced
-  with the official accounts later.
-</p>
+        return {
+          ...item,
+          message:
+            typeof nested==='string'
+              ? nested
+              : typeof nested?.message==='string'
+                ? nested.message
+                : String(nested??'')
+        };
+      })
+      .filter((item:any)=>item?._id);
+  };
 
-<hr/><hr/><h3>Create support ticket</h3><form onSubmit={submit} className="form-grid"><Field label="Subject"><input value={subject} onChange={e=>setSubject(e.target.value)} required/></Field><Field label="Message"><textarea value={message} onChange={e=>setMessage(e.target.value)} required rows={5}/></Field>{done&&<p className="success">{done}</p>}<Button type="submit" loading={loading}>Create Ticket <LifeBuoy size={15}/></Button></form></Card></div><Card><h3>Ticket history</h3>{tickets.length?<Table headers={['Subject','Status','Created']}>{tickets.map(t=><tr key={t._id}><td><b>{t.subject}</b><small>{t.message}</small></td><td><StatusBadge status={t.status}/></td><td>{new Date(t.createdAt).toLocaleString()}</td></tr>)}</Table>:<div className="empty">No support tickets yet.</div>}</Card></Shell>}
+  const loadTickets=async()=>{
+    try{
+      const data=await supportService.getTickets();
+      const normalized=normalizeTickets(data);
 
+      setTickets(normalized);
 
+      setSelected(current=>{
+        if(!current) return current;
 
+        const fresh=normalized.find(
+          (t:SupportTicket)=>t._id===current._id
+        );
 
+        return fresh||null;
+      });
+    }catch(e){
+      setError(
+        (e as Error).message||
+        'Unable to load tickets.'
+      );
+    }finally{
+      setLoading(false);
+    }
+  };
 
+  const loadMessages=async(
+    ticketId:string,
+    markRead=true
+  )=>{
+    setMessagesLoading(true);
+
+    try{
+      const data=await supportService.getMessages(ticketId);
+      const normalized=normalizeMessages(data);
+
+      setMessages(normalized);
+
+      if(markRead){
+        await supportService.markRead(ticketId);
+
+        setTickets(x=>
+          x.map(t=>
+            t._id===ticketId
+              ? {...t,unreadForUser:0}
+              : t
+          )
+        );
+      }
+    }catch(e){
+      setError(
+        (e as Error).message||
+        'Unable to load support messages.'
+      );
+    }finally{
+      setMessagesLoading(false);
+    }
+  };
+
+  useEffect(()=>{
+    void loadTickets();
+
+    const timer=window.setInterval(()=>{
+      void loadTickets();
+    },10000);
+
+    return ()=>window.clearInterval(timer);
+  },[]);
+
+  useEffect(()=>{
+    if(!selected) return;
+
+    void loadMessages(selected._id);
+
+    const timer=window.setInterval(()=>{
+      void loadMessages(selected._id,false);
+    },5000);
+
+    return ()=>window.clearInterval(timer);
+  },[selected?._id]);
+
+  const selectTicket=async(t:SupportTicket)=>{
+    setSelected(t);
+    setError('');
+    await loadMessages(t._id,true);
+  };
+
+  const submit=async(e:FormEvent)=>{
+    e.preventDefault();
+
+    setLoading(true);
+    setError('');
+    setDone('');
+
+    try{
+      const response=await supportService.createTicket({
+        subject,
+        message
+      });
+
+      const created=(
+        response?.ticket||
+        response?.data?.ticket||
+        response?.data||
+        response
+      );
+
+      setTickets(x=>[
+        created,
+        ...(Array.isArray(x)?x:[])
+      ]);
+
+      setSelected(created);
+      setSubject('');
+      setMessage('');
+      setDone('Ticket created successfully.');
+
+      await loadMessages(created._id,true);
+    }catch(e){
+      setError(
+        (e as Error).message||
+        'Unable to create ticket.'
+      );
+    }finally{
+      setLoading(false);
+    }
+  };
+
+  const sendReply=async()=>{
+    if(
+      !selected||
+      !reply.trim()||
+      selected.status==='RESOLVED'
+    ){
+      return;
+    }
+
+    setSending(true);
+    setError('');
+    setDone('');
+
+    try{
+      await supportService.sendMessage(
+        selected._id,
+        reply.trim()
+      );
+
+      setReply('');
+
+      await loadMessages(selected._id,false);
+      await loadTickets();
+    }catch(e){
+      setError(
+        (e as Error).message||
+        'Unable to send reply.'
+      );
+    }finally{
+      setSending(false);
+    }
+  };
+
+  return (
+    <Shell
+      eyebrow="HELP"
+      title="Support"
+      description="FAQs, contact support and ticket history."
+    >
+      {error&&<p className="error">{error}</p>}
+      {done&&<p className="success">{done}</p>}
+
+      <div className="grid2">
+
+        <Card>
+          <h3>Frequently asked</h3>
+
+          <div className="faq">
+            <details>
+              <summary>
+                When does a package cycle start?
+              </summary>
+              <p>
+                After backend verification marks the
+                associated deposit completed, activation
+                and cycle timestamps are created server-side.
+              </p>
+            </details>
+
+            <details>
+              <summary>
+                Can I activate a package manually?
+              </summary>
+              <p>
+                No. The intended architecture automatically
+                activates it after verified payment.
+              </p>
+            </details>
+
+            <details>
+              <summary>
+                Are dashboard timers authoritative?
+              </summary>
+              <p>
+                No. They are presentation-only and never
+                credit financial value.
+              </p>
+            </details>
+          </div>
+        </Card>
+
+        <Card>
+          <h3>Customer Support</h3>
+
+          <p className="muted-copy">
+            Contact TRUST MINE through our support channels
+            or start a conversation with support.
+          </p>
+
+          <div
+            className="actions"
+            style={{marginBottom:'18px'}}
+          >
+            <a
+              className="btn"
+              href="https://whatsapp.com/channel/0029Vb8r8KN4dTnFwnDT2J0D"
+              target="_blank"
+              rel="noreferrer"
+            >
+              WhatsApp Channel
+            </a>
+
+            <a
+              className="btn"
+              href="https://wa.me/000000000000"
+              target="_blank"
+              rel="noreferrer"
+            >
+              WhatsApp Contact
+            </a>
+
+            <a
+              className="btn"
+              href="https://t.me/trustmine_demo"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Telegram
+            </a>
+          </div>
+
+          <p className="muted-copy">
+            WhatsApp contact and Telegram links are temporary
+            placeholders and can be replaced with the official
+            accounts later.
+          </p>
+
+          <hr/>
+
+          <h3>Create support ticket</h3>
+
+          <form
+            onSubmit={submit}
+            className="form-grid"
+          >
+            <Field label="Subject">
+              <input
+                value={subject}
+                onChange={e=>setSubject(e.target.value)}
+                required
+              />
+            </Field>
+
+            <Field label="Message">
+              <textarea
+                value={message}
+                onChange={e=>setMessage(e.target.value)}
+                required
+                rows={5}
+              />
+            </Field>
+
+            <Button
+              type="submit"
+              loading={loading}
+            >
+              Create Ticket <LifeBuoy size={15}/>
+            </Button>
+          </form>
+        </Card>
+
+      </div>
+
+      <Card>
+        <h3>Ticket history</h3>
+
+        {loading ? (
+          <div className="empty">
+            Loading support tickets...
+          </div>
+        ) : tickets.length ? (
+
+          <Table
+            headers={[
+              'Subject',
+              'Status',
+              'Created'
+            ]}
+          >
+            {tickets.map(t=>(
+              <tr
+                key={t._id}
+                onClick={()=>selectTicket(t)}
+                style={{
+                  cursor:'pointer',
+                  background:
+                    selected?._id===t._id
+                      ?'rgba(255,255,255,0.04)'
+                      :undefined
+                }}
+              >
+                <td>
+                  <b>{t.subject}</b>
+
+                  <small>
+                    {t.lastMessagePreview||t.message}
+                  </small>
+
+                  {(t.unreadForUser||0)>0&&(
+                    <small>
+                      {t.unreadForUser} new message
+                      {(t.unreadForUser||0)>1?'s':''}
+                    </small>
+                  )}
+                </td>
+
+                <td>
+                  <StatusBadge status={t.status}/>
+                </td>
+
+                <td>
+                  {new Date(
+                    t.createdAt
+                  ).toLocaleString()}
+                </td>
+              </tr>
+            ))}
+          </Table>
+
+        ) : (
+          <div className="empty">
+            No support tickets yet.
+          </div>
+        )}
+      </Card>
+
+      {selected&&(
+        <Card>
+          <div
+            style={{
+              display:'flex',
+              justifyContent:'space-between',
+              alignItems:'center',
+              gap:'12px',
+              marginBottom:'16px'
+            }}
+          >
+            <div>
+              <h3>{selected.subject}</h3>
+
+              <small className="muted-copy">
+                {selected.status}
+              </small>
+            </div>
+
+            <Button
+              variant="ghost"
+              onClick={()=>{
+                void loadMessages(selected._id);
+              }}
+            >
+              Refresh
+            </Button>
+          </div>
+
+          <div
+            style={{
+              display:'flex',
+              flexDirection:'column',
+              gap:'12px',
+              marginBottom:'18px'
+            }}
+          >
+            {messagesLoading&&messages.length===0 ? (
+              <div className="empty">
+                Loading messages...
+              </div>
+            ) : messages.length===0 ? (
+              <div className="empty">
+                No messages yet.
+              </div>
+            ) : (
+              messages.map((m,index)=>(
+                <div
+                  key={`${m._id}-${index}`}
+                  style={{
+                    padding:'12px 14px',
+                    borderRadius:'12px',
+                    border:'1px solid rgba(255,255,255,0.08)',
+                    alignSelf:
+                      m.senderRole==='USER'
+                        ?'flex-end'
+                        :'flex-start',
+                    maxWidth:'80%'
+                  }}
+                >
+                  <strong>
+                    {m.senderRole==='USER'
+                      ?'You'
+                      :'Support Admin'}
+                  </strong>
+
+                  <p style={{margin:'6px 0'}}>
+                    {m.message}
+                  </p>
+
+                  <small className="muted-copy">
+                    {new Date(
+                      m.createdAt
+                    ).toLocaleString()}
+                  </small>
+                </div>
+              ))
+            )}
+          </div>
+
+          {selected.status==='RESOLVED' ? (
+            <div className="empty">
+              This conversation is resolved.
+              Please create a new ticket if you need
+              further assistance.
+            </div>
+          ) : (
+            <div className="form-grid">
+
+              <Field label="Reply to support">
+                <textarea
+                  value={reply}
+                  onChange={e=>setReply(e.target.value)}
+                  rows={4}
+                  maxLength={5000}
+                  placeholder="Write your reply..."
+                />
+              </Field>
+
+              <Button
+                type="button"
+                loading={sending}
+                disabled={!reply.trim()}
+                onClick={sendReply}
+              >
+                Send Reply
+              </Button>
+
+            </div>
+          )}
+        </Card>
+      )}
+    </Shell>
+  );
+}
 
