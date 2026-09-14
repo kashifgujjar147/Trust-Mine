@@ -1,4 +1,4 @@
-﻿import {Router,RequestHandler} from 'express';
+import {Router,RequestHandler} from 'express';
 import {env} from '../config/env.js';
 import rateLimit from 'express-rate-limit';
 import {register,login,me,updateMe,requestPasswordReset,resetPassword} from '../controllers/auth.js';import * as c from '../controllers/core.js';import {auth,admin} from '../middleware/auth.js';import {maintenanceGuard} from '../middleware/maintenance.js';import {validate} from '../middleware/validate.js';import {depositSchema,withdrawalSchema,supportSchema,supportMessageSchema,supportStatusSchema} from '../validators/index.js';import {PackagePurchase} from '../models/index.js';import {telegramLinkCode,telegramUnlink,telegramWebhook} from '../controllers/telegram.js';
@@ -6,7 +6,18 @@ import {paymentProofUpload,detectPaymentProofType} from '../middleware/paymentPr
 import {savePaymentProof,paymentProofFile,paymentProofStream} from '../services/paymentProofStorage.js';
 import {ObjectId} from 'mongodb';
 export const router=Router();
-const authSensitiveLimit=rateLimit({windowMs:15*60*1000,max:env.NODE_ENV === 'production' ? 10 : 100,standardHeaders:true,legacyHeaders:false,message:{message:'Too many authentication requests. Please try again later.'}});
+const authSensitiveLimit=rateLimit({
+  windowMs:15*60*1000,
+  max:env.NODE_ENV === 'production' ? 20 : 100,
+  standardHeaders:true,
+  legacyHeaders:false,
+  skipSuccessfulRequests:true,
+  keyGenerator:(req)=>{
+    const email=String(req.body?.email || '').trim().toLowerCase();
+    return email ? req.ip + ":" + email : req.ip;
+  },
+  message:{message:'Too many authentication requests. Please try again later.'}
+});
 const wrap=(handler:RequestHandler):RequestHandler=>(req,res,next)=>Promise.resolve(handler(req,res,next)).catch(next);
 const route={get:(path:string,...handlers:RequestHandler[])=>router.get(path,...handlers.map(wrap)),post:(path:string,...handlers:RequestHandler[])=>router.post(path,...handlers.map(wrap)),patch:(path:string,...handlers:RequestHandler[])=>router.patch(path,...handlers.map(wrap)),delete:(path:string,...handlers:RequestHandler[])=>router.delete(path,...handlers.map(wrap))};
 const userAuth=[auth,maintenanceGuard] as RequestHandler[];
