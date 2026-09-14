@@ -1,4 +1,4 @@
-﻿import { hash ,sign} from '../utils/auth.js';
+import { hash ,sign} from '../utils/auth.js';
 import {paymentProofExists} from '../services/paymentProofStorage.js';
 
 import { Request, Response } from 'express';
@@ -842,40 +842,35 @@ export async function createDeposit(
 }
 
 
+
+
 export async function deposits(
   req: AuthedRequest,
   res: Response
 ) {
-
-  const rows =
-    await Deposit.find({
-      userId:
-        req.user!.id
-    }).populate(
-      'packageId',
-      'name'
-    );
+  const rows = await Deposit.find({
+    userId: req.user!.id
+  })
+    .populate('packageId', 'name')
+    .lean();
 
   res.json({
-    deposits:
-      rows.map(
-        d => ({
-          ...d,
-
-          packageName:
-            (d.packageId as any)?.name ||
-            'Package',
-
-          packageId:
-            String(
-              (d.packageId as any)?._id ||
-              d.packageId
-            )
-        })
-      )
+    deposits: rows.map((d: any) => ({
+      ...d,
+      _id: String(d._id),
+      transactionId: d.transactionId,
+      amount: Number(d.amount),
+      method: d.method,
+      reference: d.reference,
+      proofUrl: d.proofUrl,
+      status: d.status,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      packageName: d.packageId?.name || 'Package',
+      packageId: String(d.packageId?._id || d.packageId || '')
+    }))
   });
 }
-
 
 export async function depositDetails(
   req: AuthedRequest,
