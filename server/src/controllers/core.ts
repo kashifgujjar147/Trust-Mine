@@ -1,4 +1,4 @@
-import { hash ,sign} from '../utils/auth.js';
+﻿import { hash ,sign} from '../utils/auth.js';
 import {paymentProofExists} from '../services/paymentProofStorage.js';
 
 import { Request, Response } from 'express';
@@ -56,7 +56,7 @@ import {
   createCommissions
 } from '../services/referralService.js';
 
-import { isWithdrawalProcessingWindow, claimWithdrawalSlot } from '../services/withdrawalPolicy.js';
+import { isWithdrawalProcessingWindow, claimWithdrawalSlot, getWithdrawalEligibility } from '../services/withdrawalPolicy.js';
 import { sendTelegramNotification } from '../services/telegramService.js';
 import { env } from '../config/env.js';
 
@@ -1913,6 +1913,17 @@ export async function withdrawalDetails(
    CREATE WITHDRAWAL
 ========================================================= */
 
+export async function withdrawalEligibility(
+  req: AuthedRequest,
+  res: Response
+) {
+  const eligibility = await getWithdrawalEligibility(
+    req.user!.id,
+    new Date()
+  );
+
+  return res.json(eligibility);
+}
 export async function createWithdrawal(
   req: AuthedRequest,
   res: Response
@@ -6385,6 +6396,8 @@ export async function adminUpdateUserStatus(
     user: updatedUser
   });
 }
+
+
 
 
 

@@ -371,6 +371,22 @@ export const withdrawalService={
     'withdrawals'
   ),
 
+  getWithdrawalEligibility:async()=>{
+    if(mockMode){
+      return {
+        eligible:true,
+        nextWithdrawalAt:null,
+        lastWithdrawalAt:null,
+        windowStart:'10:00',
+        windowEnd:'17:00',
+        timezone:'Asia/Karachi'
+      };
+    }
+
+    return (
+      await api.get('/withdrawals/eligibility')
+    ).data;
+  },
   async createWithdrawal(
     input:{
       amount:number;
@@ -1922,6 +1938,7 @@ export const apiServices={
 };
 
 export const telegramService={linkCode:async()=> (await api.post('/telegram/link-code')).data,unlink:async()=> (await api.post('/telegram/unlink')).data};
+
 
 
 
