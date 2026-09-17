@@ -1,4 +1,4 @@
-import {api,mockMode,setToken,clearToken} from './api';
+﻿import {api,mockMode,setToken,clearToken} from './api';
 import * as m from './mock';
 import type {
   PackagePlan,
@@ -438,11 +438,24 @@ export const transactionService={
 };
 
 export const teamService={
-
+  
   getTeam:async()=>
     mockMode
-      ?delay(m.team)
-      :(await api.get('/team')).data.members,
+      ?delay({
+          members:m.team,
+          summary:{
+            directMembers:m.team.filter(x=>x.level===1).length,
+            indirectTeam:m.team.filter(x=>x.level>=2).length,
+            totalTeam:m.team.length,
+            activeTeam:m.team.filter(x=>x.status==='ACTIVE').length,
+            selfBusiness:0,
+            directBusiness:0,
+            indirectBusiness:0,
+            totalBusiness:0,
+            commission:m.team.reduce((s,x)=>s+x.commission,0)
+          }
+        })
+      :(await api.get('/team')).data,
 
   getReferral:async()=>
     mockMode
@@ -453,7 +466,6 @@ export const teamService={
         })
       :(await api.get('/team')).data.referral
 };
-
 export const rewardService={
 
   getRewards:async()=>

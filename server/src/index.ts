@@ -14,9 +14,21 @@ const app = express();
 
 app.use(helmet());
 
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://trust-mine.vercel.app',
+];
+
 app.use(
   cors({
-    origin: env.CLIENT_URL,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
   })
 );
 

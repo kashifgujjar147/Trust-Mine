@@ -1,4 +1,4 @@
-import {FormEvent,ReactNode,useEffect,useState} from 'react';
+﻿import {FormEvent,ReactNode,useEffect,useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {depositService,withdrawalService,transactionService,teamService,rewardService,promoService,settingsService,notificationService,supportService,paymentMethodService,packageService,userService} from '../services';
 import {Card,Button,Field,PageState,Progress,StatusBadge,SearchBar} from '../components/ui';
@@ -10,16 +10,201 @@ function Table({headers,children,minWidth=760}:{headers:string[];children:ReactN
 
 export function PackageDetails({id}:{id:string}){const [p,setP]=useState<PackagePlan|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState('');const nav=useNavigate();const load=()=>{setLoading(true);setError('');packageService.getPackage(id).then(v=>{if(v)setP(v);else setError('Package not found.')}).catch(e=>setError(e.message||'Unable to load package.')).finally(()=>setLoading(false))};useEffect(()=>{void load()},[id]);if(loading)return <Shell eyebrow="PACKAGE" title="Package details" description="Loading package configuration."><PageState type="loading" message="Loading package details."/></Shell>;if(error||!p)return <Shell eyebrow="PACKAGE" title="Package details" description="The requested package could not be loaded."><PageState type="error" message={error||'Package not found.'} onRetry={load}/></Shell>;return <Shell eyebrow="PACKAGE" title={p.name} description="Review the server-configured package before starting the deposit flow."><div className="detail-grid"><Card><div className="detail-hero"><span className="mini">24-HOUR CYCLE</span><StatusBadge status={p.status}/><strong>${p.amount.toFixed(2)}</strong><p>{p.description}</p></div><div className="metric-grid"><div><span>Daily configuration</span><b>${p.incomeConfiguration.daily.toFixed(2)}</b></div><div><span>Package duration</span><b>{p.cycleDays} days</b></div><div><span>Sort order</span><b>#{p.sortOrder}</b></div></div><Button disabled={p.status!=='ACTIVE'} onClick={()=>nav(`/deposit?packageId=${p._id}`)}>Deposit & Activate <ArrowRight size={15}/></Button></Card></div></Shell>}
 
-export function DepositHistory(){const [items,setItems]=useState<Deposit[]>([]),[q,setQ]=useState(''),[status,setStatus]=useState(''),[error,setError]=useState('');const load=()=>{setError('');depositService.getDeposits().then(setItems).catch(e=>setError(e.message||'Unable to load deposits.'))};useEffect(()=>{void load()},[]);const filtered=items.filter(x=>(!status||x.status===status)&&(x.transactionId+x.method+(x.packageName||'')+(x.reference||'')).toLowerCase().includes(q.toLowerCase()));return <Shell eyebrow="FUNDING" title="Deposit History" description="Track submitted deposits and their server-controlled verification state."><Card><div className="toolbar"><SearchBar value={q} onChange={setQ} placeholder="Search deposit ID, reference or method…"/><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option><option>PENDING</option><option>PROCESSING</option><option>COMPLETED</option><option>REJECTED</option><option>FAILED</option><option>CANCELLED</option></select><Button variant="ghost" onClick={load}><RefreshCw size={14}/>Refresh</Button></div>{error&&<p className="error">{error}</p>}{filtered.length?<Table headers={['Transaction','Package','Amount','Method','Status','Date']}>{filtered.map(d=><tr key={d._id}><td><b>{d.transactionId}</b><small>{d.reference||'—'}</small></td><td>{d.packageName||'—'}</td><td>${d.amount.toFixed(2)}</td><td>{d.method}</td><td><StatusBadge status={d.status}/></td><td>{new Date(d.createdAt).toLocaleDateString()}</td></tr>)}</Table>:<PageState type="empty" message="No deposits match your filters."/>}</Card></Shell>}
+export function DepositHistory(){const [items,setItems]=useState<Deposit[]>([]),[q,setQ]=useState(''),[status,setStatus]=useState(''),[error,setError]=useState('');const load=()=>{setError('');depositService.getDeposits().then(setItems).catch(e=>setError(e.message||'Unable to load deposits.'))};useEffect(()=>{void load()},[]);const filtered=items.filter(x=>(!status||x.status===status)&&(x.transactionId+x.method+(x.packageName||'')+(x.reference||'')).toLowerCase().includes(q.toLowerCase()));return <Shell eyebrow="FUNDING" title="Deposit History" description="Track submitted deposits and their server-controlled verification state."><Card><div className="toolbar"><SearchBar value={q} onChange={setQ} placeholder="Search deposit ID, reference or methodâ€¦"/><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option><option>PENDING</option><option>PROCESSING</option><option>COMPLETED</option><option>REJECTED</option><option>FAILED</option><option>CANCELLED</option></select><Button variant="ghost" onClick={load}><RefreshCw size={14}/>Refresh</Button></div>{error&&<p className="error">{error}</p>}{filtered.length?<Table headers={['Transaction','Package','Amount','Method','Status','Date']}>{filtered.map(d=><tr key={d._id}><td><b>{d.transactionId}</b><small>{d.reference||'â€”'}</small></td><td>{d.packageName||'â€”'}</td><td>${d.amount.toFixed(2)}</td><td>{d.method}</td><td><StatusBadge status={d.status}/></td><td>{new Date(d.createdAt).toLocaleDateString()}</td></tr>)}</Table>:<PageState type="empty" message="No deposits match your filters."/>}</Card></Shell>}
 
-export function Withdrawal(){const [amount,setAmount]=useState(''),[method,setMethod]=useState(''),[account,setAccount]=useState(''),[settings,setSettings]=useState<PlatformSettings|null>(null),[methods,setMethods]=useState<PaymentMethod[]>([]),[balance,setBalance]=useState<number|null>(null),[done,setDone]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true),[submitting,setSubmitting]=useState(false);const load=()=>{setLoading(true);Promise.all([settingsService.getSettings(),paymentMethodService.getMethods(),import('../services').then(x=>x.dashboardService.getDashboard())]).then(([s,m,d])=>{setSettings(s);setMethods(m);setMethod(m[0]?.code||'');setBalance(d.availableBalance)}).catch(e=>setError(e.message||'Unable to load withdrawal settings.')).finally(()=>setLoading(false))};useEffect(()=>{void load()},[]);const n=Number(amount)||0,fee=n*(settings?.withdrawalFeePercent||0)/100,net=Math.max(0,n-fee);const submit=async(e:FormEvent)=>{e.preventDefault();setSubmitting(true);setDone('');setError('');try{const r=await withdrawalService.createWithdrawal({amount:n,method,account});setDone(r.message);setAmount('');const d=await import('../services').then(x=>x.dashboardService.getDashboard());setBalance(d.availableBalance)}catch(x){const e=x as Error;setError(e.message||'Unable to submit withdrawal.')}finally{setSubmitting(false)}};if(loading)return <Shell eyebrow="PAYOUT" title="Withdrawal" description="Loading payout configuration."><PageState type="loading" message="Loading withdrawal settings."/></Shell>;return <Shell eyebrow="PAYOUT" title="Withdrawal" description="Request a payout from your available balance. Fees are recalculated by the backend."><div className="grid2"><Card><form onSubmit={submit} className="form-grid"><Field label="Amount" hint={`Minimum: $${(settings?.minimumWithdrawal||1).toFixed(2)}`}><input type="number" min={settings?.minimumWithdrawal||1} step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} required/></Field><Field label="Payment method"><select value={method} onChange={e=>setMethod(e.target.value)} required>{methods.map(m=><option key={m.code} value={m.code}>{m.name}</option>)}</select></Field><Field label="Destination"><input value={account} onChange={e=>setAccount(e.target.value)} placeholder="Wallet / account / IBAN" required/></Field>{error&&<p className="error">{error}</p>}{done&&<p className="success">{done}</p>}<Button type="submit" loading={submitting} disabled={!method}>Request Withdrawal <Send size={15}/></Button></form></Card><Card><span className="eyebrow">PAYOUT SUMMARY</span><div className="summary large"><span>Available balance</span><b>${(balance??0).toFixed(2)}</b><span>Requested</span><b>${n.toFixed(2)}</b><span>Fee ({settings?.withdrawalFeePercent||0}%)</span><b>−${fee.toFixed(2)}</b><span>Estimated net</span><strong>${net.toFixed(2)}</strong></div><div className="notice">The preview is informational; the server validates balance, fee, minimum and eligibility.</div></Card></div></Shell>}
+export function Withdrawal(){const [amount,setAmount]=useState(''),[method,setMethod]=useState(''),[account,setAccount]=useState(''),[settings,setSettings]=useState<PlatformSettings|null>(null),[methods,setMethods]=useState<PaymentMethod[]>([]),[balance,setBalance]=useState<number|null>(null),[done,setDone]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true),[submitting,setSubmitting]=useState(false);const load=()=>{setLoading(true);Promise.all([settingsService.getSettings(),paymentMethodService.getMethods(),import('../services').then(x=>x.dashboardService.getDashboard())]).then(([s,m,d])=>{setSettings(s);setMethods(m);setMethod(m[0]?.code||'');setBalance(d.availableBalance)}).catch(e=>setError(e.message||'Unable to load withdrawal settings.')).finally(()=>setLoading(false))};useEffect(()=>{void load()},[]);const n=Number(amount)||0,fee=n*(settings?.withdrawalFeePercent||0)/100,net=Math.max(0,n-fee);const submit=async(e:FormEvent)=>{e.preventDefault();setSubmitting(true);setDone('');setError('');try{const r=await withdrawalService.createWithdrawal({amount:n,method,account});setDone(r.message);setAmount('');const d=await import('../services').then(x=>x.dashboardService.getDashboard());setBalance(d.availableBalance)}catch(x){const e=x as Error;setError(e.message||'Unable to submit withdrawal.')}finally{setSubmitting(false)}};if(loading)return <Shell eyebrow="PAYOUT" title="Withdrawal" description="Loading payout configuration."><PageState type="loading" message="Loading withdrawal settings."/></Shell>;return <Shell eyebrow="PAYOUT" title="Withdrawal" description="Request a payout from your available balance. Fees are recalculated by the backend."><div className="grid2"><Card><form onSubmit={submit} className="form-grid"><Field label="Amount" hint={`Minimum: $${(settings?.minimumWithdrawal||1).toFixed(2)}`}><input type="number" min={settings?.minimumWithdrawal||1} step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} required/></Field><Field label="Payment method"><select value={method} onChange={e=>setMethod(e.target.value)} required>{methods.map(m=><option key={m.code} value={m.code}>{m.name}</option>)}</select></Field><Field label="Destination"><input value={account} onChange={e=>setAccount(e.target.value)} placeholder="Wallet / account / IBAN" required/></Field>{error&&<p className="error">{error}</p>}{done&&<p className="success">{done}</p>}<Button type="submit" loading={submitting} disabled={!method}>Request Withdrawal <Send size={15}/></Button></form></Card><Card><span className="eyebrow">PAYOUT SUMMARY</span><div className="summary large"><span>Available balance</span><b>${(balance??0).toFixed(2)}</b><span>Requested</span><b>${n.toFixed(2)}</b><span>Fee ({settings?.withdrawalFeePercent||0}%)</span><b>âˆ’${fee.toFixed(2)}</b><span>Estimated net</span><strong>${net.toFixed(2)}</strong></div><div className="notice">The preview is informational; the server validates balance, fee, minimum and eligibility.</div></Card></div></Shell>}
 
 export function WithdrawalHistory(){const [items,setItems]=useState<WithdrawalRecord[]>([]),[error,setError]=useState('');const load=()=>withdrawalService.getWithdrawals().then(setItems).catch(e=>setError(e.message||'Unable to load withdrawals.'));useEffect(()=>{void load()},[]);return <Shell eyebrow="PAYOUT" title="Withdrawal History" description="Review payout requests and their processing status."><Card>{error&&<p className="error">{error}</p>}{items.length?<Table headers={['Transaction','Amount','Fee','Net','Method','Status','Date']}>{items.map(w=><tr key={w._id}><td>{w.transactionId}</td><td>${w.amount.toFixed(2)}</td><td>${w.fee.toFixed(2)}</td><td>${w.netAmount.toFixed(2)}</td><td>{w.method}</td><td><StatusBadge status={w.status}/></td><td>{new Date(w.createdAt).toLocaleDateString()}</td></tr>)}</Table>:<PageState type="empty" message="No withdrawal requests yet."/>}</Card></Shell>}
 
-export function Transactions(){const [items,setItems]=useState<Transaction[]>([]),[q,setQ]=useState(''),[type,setType]=useState(''),[status,setStatus]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true);const load=()=>{setLoading(true);setError('');transactionService.getTransactions({q,type,status}).then(setItems).catch(e=>setError(e.message||'Unable to load transactions.')).finally(()=>setLoading(false))};useEffect(()=>{void load()},[q,type,status]);return <Shell eyebrow="LEDGER" title="Transaction History" description="Unified, traceable financial events returned by the ledger service."><Card><div className="toolbar"><SearchBar value={q} onChange={setQ} placeholder="Search transaction…"/><div className="filter-row"><select value={type} onChange={e=>setType(e.target.value)}><option value="">All types</option>{['DEPOSIT','PACKAGE_PURCHASE','PACKAGE_INCOME','WITHDRAWAL','WITHDRAWAL_FEE','COMMISSION','REWARD','PROMO_REWARD','ADJUSTMENT','REFUND','REVERSAL'].map(x=><option key={x} value={x}>{x}</option>)}</select><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option>{['COMPLETED','PENDING','PROCESSING','REJECTED','APPROVED','FAILED'].map(x=><option key={x} value={x}>{x}</option>)}</select></div><Button variant="ghost" onClick={load}><RefreshCw size={14}/>Refresh</Button></div>{error&&<p className="error">{error}</p>}{loading?<PageState type="loading" message="Loading ledger events."/>:items.length?<Table headers={['ID','Type','Amount','Fee','Net','Status','Date']}>{items.map(t=><tr key={t._id}><td><b>{t.transactionId}</b><small>{t.description||'Ledger event'}</small></td><td>{t.type}</td><td>${t.amount.toFixed(2)}</td><td>${t.fee.toFixed(2)}</td><td>${t.netAmount.toFixed(2)}</td><td><StatusBadge status={t.status}/></td><td>{new Date(t.createdAt).toLocaleDateString()}</td></tr>)}</Table>:<PageState type="empty" message="No transactions found."/>}</Card></Shell>}
+export function Transactions(){const [items,setItems]=useState<Transaction[]>([]),[q,setQ]=useState(''),[type,setType]=useState(''),[status,setStatus]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true);const load=()=>{setLoading(true);setError('');transactionService.getTransactions({q,type,status}).then(setItems).catch(e=>setError(e.message||'Unable to load transactions.')).finally(()=>setLoading(false))};useEffect(()=>{void load()},[q,type,status]);return <Shell eyebrow="LEDGER" title="Transaction History" description="Unified, traceable financial events returned by the ledger service."><Card><div className="toolbar"><SearchBar value={q} onChange={setQ} placeholder="Search transactionâ€¦"/><div className="filter-row"><select value={type} onChange={e=>setType(e.target.value)}><option value="">All types</option>{['DEPOSIT','PACKAGE_PURCHASE','PACKAGE_INCOME','WITHDRAWAL','WITHDRAWAL_FEE','COMMISSION','REWARD','PROMO_REWARD','ADJUSTMENT','REFUND','REVERSAL'].map(x=><option key={x} value={x}>{x}</option>)}</select><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option>{['COMPLETED','PENDING','PROCESSING','REJECTED','APPROVED','FAILED'].map(x=><option key={x} value={x}>{x}</option>)}</select></div><Button variant="ghost" onClick={load}><RefreshCw size={14}/>Refresh</Button></div>{error&&<p className="error">{error}</p>}{loading?<PageState type="loading" message="Loading ledger events."/>:items.length?<Table headers={['ID','Type','Amount','Fee','Net','Status','Date']}>{items.map(t=><tr key={t._id}><td><b>{t.transactionId}</b><small>{t.description||'Ledger event'}</small></td><td>{t.type}</td><td>${t.amount.toFixed(2)}</td><td>${t.fee.toFixed(2)}</td><td>${t.netAmount.toFixed(2)}</td><td><StatusBadge status={t.status}/></td><td>{new Date(t.createdAt).toLocaleDateString()}</td></tr>)}</Table>:<PageState type="empty" message="No transactions found."/>}</Card></Shell>}
 
-export function Team(){const [members,setMembers]=useState<TeamMember[]>([]),[ref,setRef]=useState<{link:string;code:string;levels:number[]}|null>(null),[copied,setCopied]=useState(false),[error,setError]=useState('');useEffect(()=>{Promise.all([teamService.getTeam(),teamService.getReferral()]).then(([a,b])=>{setMembers(a);setRef(b)}).catch(e=>setError(e.message||'Unable to load team.'))},[]);const copy=()=>{if(ref?.link)navigator.clipboard?.writeText(ref.link).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1200)}).catch(()=>setError('Clipboard access is unavailable.'))};return <Shell eyebrow="NETWORK" title="My Team" description="Referral network overview with backend-ready level configuration.">{error&&<p className="error">{error}</p>}<div className="grid2"><Card><span className="eyebrow">REFERRAL LINK</span><div className="ref-link"><input readOnly value={ref?.link||''}/><Button onClick={copy} disabled={!ref?.link}>{copied?<Check size={15}/>:<Copy size={15}/>} {copied?'Copied':'Copy'}</Button></div><div className="stats mini-stats">{(ref?.levels||[]).map((r,i)=><div key={i}><b>{r}%</b><span>Level {i+1}</span></div>)}</div></Card><Card><span className="eyebrow">NETWORK SUMMARY</span><div className="metric-grid"><div><span>Total team</span><b>{members.length}</b></div><div><span>Active</span><b>{members.filter(m=>m.status==='ACTIVE').length}</b></div><div><span>Commission</span><b>${members.reduce((s,m)=>s+m.commission,0).toFixed(2)}</b></div></div></Card></div><Card><div className="card-head"><div><h3>Team members</h3><span>Member data is returned by the team API.</span></div></div>{members.length?<Table headers={['User','Level','Status','Joined','Volume','Commission']}>{members.map(m=><tr key={m._id}><td><b>{m.name}</b><small>{m.userId}</small></td><td>L{m.level}</td><td><StatusBadge status={m.status}/></td><td>{new Date(m.joinedAt).toLocaleDateString()}</td><td>${m.volume.toFixed(2)}</td><td>${m.commission.toFixed(2)}</td></tr>)}</Table>:<PageState type="empty" message="No team members found."/>}</Card></Shell>}
+export function Team(){
+  const [members,setMembers]=useState<TeamMember[]>([]),
+    [summary,setSummary]=useState<{
+      directMembers:number;
+      indirectTeam:number;
+      totalTeam:number;
+      activeTeam:number;
+      selfBusiness:number;
+      directBusiness:number;
+      indirectBusiness:number;
+      totalBusiness:number;
+      commission:number;
+    }|null>(null),
+    [ref,setRef]=useState<{link:string;code:string;levels:number[]}|null>(null),
+    [copied,setCopied]=useState(false),
+    [error,setError]=useState('');
 
+  useEffect(()=>{
+    Promise.all([
+      teamService.getTeam(),
+      teamService.getReferral()
+    ])
+      .then(([a,b])=>{
+        setMembers(a.members);
+        setSummary(a.summary);
+        setRef(b);
+      })
+      .catch(e=>setError(e.message||'Unable to load team.'));
+  },[]);
+
+  const copy=()=>{
+    if(ref?.link)
+      navigator.clipboard?.writeText(ref.link)
+        .then(()=>{
+          setCopied(true);
+          setTimeout(()=>setCopied(false),1200);
+        })
+        .catch(()=>setError('Clipboard access is unavailable.'));
+  };
+
+  const s=summary||{
+    directMembers:0,
+    indirectTeam:0,
+    totalTeam:0,
+    activeTeam:0,
+    selfBusiness:0,
+    directBusiness:0,
+    indirectBusiness:0,
+    totalBusiness:0,
+    commission:0
+  };
+
+  return <Shell
+    eyebrow="NETWORK"
+    title="My Team"
+    description="Complete team structure, business volume and referral network overview."
+  >
+    {error&&<p className="error">{error}</p>}
+
+    <div className="grid2">
+      <Card>
+        <span className="eyebrow">REFERRAL LINK</span>
+
+        <div className="ref-link">
+          <input readOnly value={ref?.link||''}/>
+          <Button onClick={copy} disabled={!ref?.link}>
+            {copied?<Check size={15}/>:<Copy size={15}/>}
+            {copied?'Copied':'Copy'}
+          </Button>
+        </div>
+
+        <div className="stats mini-stats">
+          {(ref?.levels||[]).map((r,i)=>
+            <div key={i}>
+              <b>{r}%</b>
+              <span>Level {i+1}</span>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <span className="eyebrow">TEAM OVERVIEW</span>
+
+        <div className="metric-grid">
+          <div>
+            <span>Direct Members</span>
+            <b>{s.directMembers}</b>
+          </div>
+
+          <div>
+            <span>Indirect Team</span>
+            <b>{s.indirectTeam}</b>
+          </div>
+
+          <div>
+            <span>Total Team</span>
+            <b>{s.totalTeam}</b>
+          </div>
+
+          <div>
+            <span>Active Team</span>
+            <b>{s.activeTeam}</b>
+          </div>
+        </div>
+      </Card>
+    </div>
+
+    <Card>
+      <span className="eyebrow">BUSINESS OVERVIEW</span>
+
+      <div className="metric-grid">
+        <div>
+          <span>Self Business</span>
+          <b>${s.selfBusiness.toFixed(2)}</b>
+        </div>
+
+        <div>
+          <span>Direct Business</span>
+          <b>${s.directBusiness.toFixed(2)}</b>
+        </div>
+
+        <div>
+          <span>Indirect Business</span>
+          <b>${s.indirectBusiness.toFixed(2)}</b>
+        </div>
+
+        <div>
+          <span>Total Business</span>
+          <b>${s.totalBusiness.toFixed(2)}</b>
+        </div>
+
+        <div>
+          <span>Team Commission</span>
+          <b>${s.commission.toFixed(2)}</b>
+        </div>
+      </div>
+    </Card>
+
+    <Card>
+      <div className="card-head">
+        <div>
+          <h3>Team members</h3>
+          <span>
+            Direct and indirect members with their current business and commission details.
+          </span>
+        </div>
+      </div>
+
+      {members.length?
+        <Table headers={['User','Level','Status','Joined','Business','Commission']}>
+          {members.map(m=>
+            <tr key={m._id}>
+              <td>
+                <b>{m.name}</b>
+                <small>{m.userId}</small>
+              </td>
+
+              <td>L{m.level}</td>
+
+              <td>
+                <StatusBadge status={m.status}/>
+              </td>
+
+              <td>
+                {new Date(m.joinedAt).toLocaleDateString()}
+              </td>
+
+              <td>
+                ${m.volume.toFixed(2)}
+              </td>
+
+              <td>
+                ${m.commission.toFixed(2)}
+              </td>
+            </tr>
+          )}
+        </Table>
+        :
+        <PageState
+          type="empty"
+          message="No team members found."
+        />
+      }
+    </Card>
+  </Shell>
+}
 export function Rewards(){const [tiers,setTiers]=useState<RewardTier[]>([]),[progress,setProgress]=useState(0),[claimed,setClaimed]=useState<string[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState('');const load=()=>{setError('');Promise.all([rewardService.getRewards(),rewardService.getStatus()]).then(([a,b])=>{setTiers(a);setProgress(Number(b.qualifyingVolume||0));setClaimed(b.claimedRewardIds||[])}).catch(e=>setError(e.message||'Unable to load rewards.'))};useEffect(()=>{void load()},[]);const claim=async(id:string)=>{setBusy(id);setError('');try{await rewardService.claimReward(id);setClaimed(x=>[...x,id]);await load()}catch(e){setError((e as Error).message||'Reward claim failed.')}finally{setBusy('')}};return <Shell eyebrow="REWARDS" title="Ring Rewards" description="Reward tiers and qualification state are configuration-driven.">{error&&<p className="error">{error}</p>}<div className="reward-grid">{tiers.map(t=>{const eligible=progress>=t.threshold,already=claimed.includes(t._id);return <Card key={t._id} className="reward-card"><div className="card-head"><span className="mini">TIER</span><StatusBadge status={t.status}/></div><h2>${t.reward}</h2><p>Threshold: ${t.threshold}</p><Progress value={Math.min(100,(progress/t.threshold)*100)}/><div className="cycle-meta"><span>Progress</span><b>${Math.min(progress,t.threshold)} / ${t.threshold}</b></div><Button variant="ghost" disabled={!eligible||already} loading={busy===t._id} onClick={()=>claim(t._id)}>{already?'Claimed':eligible?'Claim reward':'View progress'}</Button></Card>})}</div><Card><h3>Qualifying volume</h3><p className="muted-copy">Completed qualifying deposits: ${progress.toFixed(2)}. Rewards are not calculated from withdrawals, income or unrelated ledger events.</p></Card></Shell>}
 
 export function Promo(){const [code,setCode]=useState(''),[result,setResult]=useState<{code:string;rewardType:string;rewardValue:number}|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[history,setHistory]=useState<string[]>([]);const apply=async()=>{if(!code.trim()){setError('Enter a promo code.');return}setLoading(true);setError('');try{const r=await promoService.applyPromo(code.trim());const applied={code:String(r.code),rewardType:String(r.rewardType),rewardValue:Number(r.rewardValue)};setResult(applied);setHistory(h=>[applied.code,...h.filter(x=>x!==applied.code)]);setCode('')}catch(e){setResult(null);setError((e as Error).message||'Promo code could not be applied.')}finally{setLoading(false)}};return <Shell eyebrow="PROMOTIONS" title="Promo Code" description="Validate and apply promotion codes through the service layer."><div className="grid2"><Card><div className="inline-form"><input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="ENTER PROMO CODE"/><Button onClick={apply} loading={loading}>Apply</Button></div>{error&&<p className="error">{error}</p>}{result&&<div className="success-box"><CheckCircle/><div><b>{result.code} applied</b><span>Reward: {result.rewardType} ${result.rewardValue}</span></div></div>}</Card><Card><span className="eyebrow">PROMO HISTORY</span>{history.length?history.map(x=><div className="list-row" key={x}><b>{x}</b><StatusBadge status="COMPLETED"/></div>):<div className="empty">No promo codes used yet.</div>}</Card></div></Shell>}
@@ -29,6 +214,7 @@ export function Settings(){const [s,setS]=useState<PlatformSettings|null>(null),
 
 export function Notifications(){const [items,setItems]=useState<Notification[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState('');const load=()=>notificationService.getNotifications().then(setItems).catch(e=>setError(e.message||'Unable to load notifications.'));useEffect(()=>{void load()},[]);const read=async(id:string)=>{setBusy(id);try{await notificationService.markRead(id);setItems(x=>x.map(n=>n._id===id?{...n,read:true}:n))}catch(e){setError((e as Error).message||'Unable to mark notification read.')}finally{setBusy('')}};return <Shell eyebrow="ALERTS" title="Notifications" description="Deposit, package, reward and system notifications ready for backend delivery.">{error&&<p className="error">{error}</p>}<Card>{items.length?items.map(n=><div className={`notification ${n.read?'read':''}`} key={n._id}><div className="notification-dot"/><div><b>{n.title}</b><p>{n.message}</p><small>{new Date(n.createdAt).toLocaleString()}</small></div>{n.read?<StatusBadge status="READ"/>:<Button variant="ghost" loading={busy===n._id} onClick={()=>read(n._id)}>Mark read</Button>}</div>):<PageState type="empty" message="You have no notifications."/>}</Card></Shell>}
 
-export function Activity(){return <Shell eyebrow="SECURITY" title="Activity History" description="Recent account activity and security events."><Card><div className="timeline">{['Signed in to account','Viewed package catalog','Opened deposit workspace','Viewed transaction ledger'].map((x,i)=><div key={x}><i/><div><b>{x}</b><small>{i+1} hour{i?'s':''} ago · Demo activity</small></div></div>)}</div></Card></Shell>}
+export function Activity(){return <Shell eyebrow="SECURITY" title="Activity History" description="Recent account activity and security events."><Card><div className="timeline">{['Signed in to account','Viewed package catalog','Opened deposit workspace','Viewed transaction ledger'].map((x,i)=><div key={x}><i/><div><b>{x}</b><small>{i+1} hour{i?'s':''} ago Â· Demo activity</small></div></div>)}</div></Card></Shell>}
 
 export function Support(){const [tickets,setTickets]=useState<SupportTicket[]>([]),[subject,setSubject]=useState(''),[message,setMessage]=useState(''),[done,setDone]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(false);useEffect(()=>{supportService.getTickets().then(setTickets).catch(e=>setError(e.message||'Unable to load tickets.'))},[]);const submit=async(e:FormEvent)=>{e.preventDefault();setLoading(true);setError('');try{const t=await supportService.createTicket({subject,message});setTickets(x=>[t,...x]);setSubject('');setMessage('');setDone('Ticket created successfully.')}catch(e){setError((e as Error).message||'Unable to create ticket.')}finally{setLoading(false)}};return <Shell eyebrow="HELP" title="Support" description="FAQs, contact support and ticket history.">{error&&<p className="error">{error}</p>}<div className="grid2"><Card><h3>Frequently asked</h3><div className="faq"><details><summary>When does a package cycle start?</summary><p>After backend verification marks the associated deposit completed, activation and cycle timestamps are created server-side.</p></details><details><summary>Can I activate a package manually?</summary><p>No. The intended architecture automatically activates it after verified payment.</p></details><details><summary>Are dashboard timers authoritative?</summary><p>No. They are presentation-only and never credit financial value.</p></details></div></Card><Card><h3>Create support ticket</h3><form onSubmit={submit} className="form-grid"><Field label="Subject"><input value={subject} onChange={e=>setSubject(e.target.value)} required/></Field><Field label="Message"><textarea value={message} onChange={e=>setMessage(e.target.value)} required rows={5}/></Field>{done&&<p className="success">{done}</p>}<Button type="submit" loading={loading}>Create Ticket <LifeBuoy size={15}/></Button></form></Card></div><Card><h3>Ticket history</h3>{tickets.length?<Table headers={['Subject','Status','Created']}>{tickets.map(t=><tr key={t._id}><td><b>{t.subject}</b><small>{t.message}</small></td><td><StatusBadge status={t.status}/></td><td>{new Date(t.createdAt).toLocaleString()}</td></tr>)}</Table>:<div className="empty">No support tickets yet.</div>}</Card></Shell>}
+

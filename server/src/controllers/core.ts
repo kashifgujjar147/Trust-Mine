@@ -1,4 +1,4 @@
-
+﻿
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 
@@ -16,7 +16,8 @@ import {
   SupportTicket,
   AuditLog,
   SystemSetting,
-  Wallet
+  Wallet,
+  Commission
 } from '../models/index.js';
 
 import { AuthedRequest } from '../middleware/auth.js';
@@ -2574,74 +2575,316 @@ export async function team(
   req: AuthedRequest,
   res: Response
 ) {
+  const userId = req.user!.id;
 
+  const settings = await getSettings();
+
+  const user = await User.findById(userId)
+    .select('_id userId fullName status referralCode createdAt');
+
+  if (!user) {
+    return res.status(404).json({
+      message: 'User not found'
+    });
+  }
+
+  /*
+   * Build referral network up to 4 levels.
+   *
+   * L1 = Direct Team
+   * L2-L4 = Indirect Team
+   */
+  const allUsers = await User.find({})
+    .select(
+      '_id userId fullName status createdAt referredBy'
+    )
+    .lean();
+
+  const childrenMap = new Map<
+    string,
+    typeof allUsers
+  >();
+
+  for (const member of allUsers) {
+    if (!member.referredBy) continue;
+
+    const parentId = String(member.referredBy);
+
+    const children =
+      childrenMap.get(parentId) || [];
+
+    children.push(member);
+    childrenMap.set(parentId, children);
+  }
+
+  type NetworkMember = {
+    _id: string;
+    userId: string;
+    name: string;
+    level: number;
+    status: string;
+    joinedAt: Date;
+    volume: number;
+    commission: number;
+  };
+
+  const network: NetworkMember[] = [];
+
+  const queue: {
+    id: string;
+    level: number;
+  }[] = [
+    {
+      id: userId,
+      level: 0
+    }
+  ];
+
+  const visited = new Set<string>([
+    userId
+  ]);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+
+    if (current.level >= 4) {
+      continue;
+    }
+
+    const children =
+      childrenMap.get(current.id) || [];
+
+    for (const child of children) {
+      const childId = String(child._id);
+
+      if (visited.has(childId)) {
+        continue;
+      }
+
+      visited.add(childId);
+
+      const level =
+        current.level + 1;
+
+      network.push({
+        _id: childId,
+        userId: child.userId,
+        name: child.fullName,
+        level,
+        status: child.status,
+        joinedAt: (child as any).createdAt,
+        volume: 0,
+        commission: 0
+      });
+
+      queue.push({
+        id: childId,
+        level
+      });
+    }
+  }
+
+  /*
+   * Current business is calculated from ACTIVE
+   * package purchases only.
+   */
+  const networkIds = [
+    userId,
+    ...network.map(member => member._id)
+  ];
+
+  const purchases =
+    await PackagePurchase.find({
+      userId: {
+        $in: networkIds
+      },
+      status: 'ACTIVE'
+    })
+      .select('userId packageAmount')
+      .lean();
+
+  const businessMap = new Map<
+    string,
+    number
+  >();
+
+  for (const purchase of purchases) {
+    const id = String(purchase.userId);
+
+    const amount =
+      Number(purchase.packageAmount || 0);
+
+    businessMap.set(
+      id,
+      Number(
+        (
+          (businessMap.get(id) || 0) +
+          amount
+        ).toFixed(2)
+      )
+    );
+  }
+
+  /*
+   * Actual commissions received by each
+   * network member.
+   */
+  const commissions =
+    await Commission.find({
+      userId: {
+        $in: networkIds
+      }
+    })
+      .select('userId amount')
+      .lean();
+
+  const commissionMap = new Map<
+    string,
+    number
+  >();
+
+  for (const commission of commissions) {
+    const id = String(commission.userId);
+
+    const amount =
+      Number(commission.amount || 0);
+
+    commissionMap.set(
+      id,
+      Number(
+        (
+          (commissionMap.get(id) || 0) +
+          amount
+        ).toFixed(2)
+      )
+    );
+  }
+
+  /*
+   * Attach real business and commission
+   * to each member.
+   */
+  for (const member of network) {
+    member.volume =
+      Number(
+        businessMap.get(member._id) || 0
+      );
+
+    member.commission =
+      Number(
+        commissionMap.get(member._id) || 0
+      );
+  }
+
+  const directMembers =
+    network.filter(
+      member => member.level === 1
+    );
+
+  const indirectMembers =
+    network.filter(
+      member => member.level >= 2
+    );
+
+  /*
+   * Business calculations
+   */
+  const selfBusiness =
+    Number(
+      businessMap.get(userId) || 0
+    );
+
+  const directBusiness =
+    directMembers.reduce(
+      (sum, member) =>
+        sum + Number(member.volume || 0),
+      0
+    );
+
+  const indirectBusiness =
+    indirectMembers.reduce(
+      (sum, member) =>
+        sum + Number(member.volume || 0),
+      0
+    );
+
+  const totalBusiness =
+    selfBusiness +
+    directBusiness +
+    indirectBusiness;
+
+  const totalCommission =
+    network.reduce(
+      (sum, member) =>
+        sum + Number(member.commission || 0),
+      0
+    );
+
+  /*
+   * Keep existing upline/referral information.
+   */
   const chain =
     await getUpline(
-      req.user!.id,
+      userId,
       4
     );
 
-  const direct =
-    await User.find({
-      referredBy:
-        req.user!.id
-    }).select(
-      'userId fullName status createdAt'
-    );
+  return res.json({
+    members: network,
 
-  const settings =
-    await getSettings();
+    summary: {
+      directMembers:
+        directMembers.length,
 
-  const user =
-    await User.findById(
-      req.user!.id
-    ).select(
-      'referralCode'
-    );
+      indirectTeam:
+        indirectMembers.length,
 
-  res.json({
+      totalTeam:
+        network.length,
 
-    members:
-      direct.map(
-        (u: any) => ({
-          _id:
-            u._id,
+      activeTeam:
+        network.filter(
+          member =>
+            member.status === 'ACTIVE'
+        ).length,
 
-          userId:
-            u.userId,
+      selfBusiness:
+        Number(
+          selfBusiness.toFixed(2)
+        ),
 
-          name:
-            u.fullName,
+      directBusiness:
+        Number(
+          directBusiness.toFixed(2)
+        ),
 
-          level:
-            1,
+      indirectBusiness:
+        Number(
+          indirectBusiness.toFixed(2)
+        ),
 
-          status:
-            u.status,
+      totalBusiness:
+        Number(
+          totalBusiness.toFixed(2)
+        ),
 
-          joinedAt:
-            u.createdAt,
-
-          volume:
-            0,
-
-          commission:
-            0
-        })
-      ),
+      commission:
+        Number(
+          totalCommission.toFixed(2)
+        )
+    },
 
     referral: {
-
       link:
         `${
           process.env.CLIENT_URL ||
           'http://localhost:5173'
         }/register?ref=${
-          user?.referralCode
+          user.referralCode
         }`,
 
       code:
-        user?.referralCode,
+        user.referralCode,
 
       levels:
         settings.commissionRates,
@@ -2650,8 +2893,6 @@ export async function team(
     }
   });
 }
-
-
 /* =========================================================
    REWARDS
 ========================================================= */
@@ -5639,4 +5880,9 @@ export async function updateSettings(
     await getSettings()
   );
 }
+
+
+
+
+
 
