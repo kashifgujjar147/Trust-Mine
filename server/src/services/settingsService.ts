@@ -36,7 +36,7 @@ export const defaults = {
   packageDurationDays: 365,
   maintenanceMode: false,
   supportEmail: 'support@trustmine.example',
-  supportPhone: '+1 000 000 0000',
+  supportPhone: '+92 315 3430862',
 };
 
 export async function getSettings() {
