@@ -14,7 +14,7 @@ const authSensitiveLimit=rateLimit({
   skipSuccessfulRequests:true,
   keyGenerator:(req)=>{
     const email=String(req.body?.email || '').trim().toLowerCase();
-    return email ? req.ip + ":" + email : req.ip;
+    return email ? (req.ip ?? "unknown") + ":" + email : (req.ip ?? "unknown");
   },
   message:{message:'Too many authentication requests. Please try again later.'}
 });
