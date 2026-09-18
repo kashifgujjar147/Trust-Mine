@@ -660,7 +660,7 @@ export function Support(){
 
             <a
               className="btn"
-              href="https://wa.me/000000000000"
+              href="https://wa.me/923153430862"
               target="_blank"
               rel="noreferrer"
             >
