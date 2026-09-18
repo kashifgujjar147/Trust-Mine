@@ -669,7 +669,7 @@ export function Support(){
 
             <a
               className="btn"
-              href="https://t.me/trustmine_demo"
+              href="https://wa.me/923153430862"
               target="_blank"
               rel="noreferrer"
             >
