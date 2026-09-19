@@ -574,7 +574,7 @@ export default function Admin(){
   }
 
   const filteredUsers=users.filter(u=>
-    (u.fullName+u.email+u.userId)
+    (u.fullName+u.email+u.userId+(u.username||''))
       .toLowerCase()
       .includes(q.toLowerCase())
   );
