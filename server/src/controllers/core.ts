@@ -3672,7 +3672,7 @@ export async function adminUsers(
 
   res.json({
     users:
-      await User.find().select('-passwordHash').limit(100).lean()
+      await User.find().select('-passwordHash').lean()
   });
 }
 
