@@ -669,19 +669,15 @@ export function Support(){
 
             <a
               className="btn"
-              href="https://wa.me/923153430862"
+              href="https://m.me/61594176853527"
               target="_blank"
               rel="noreferrer"
             >
-              Telegram
+              Messenger
             </a>
           </div>
 
-          <p className="muted-copy">
-            WhatsApp contact and Telegram links are temporary
-            placeholders and can be replaced with the official
-            accounts later.
-          </p>
+         
 
           <hr/>
 
