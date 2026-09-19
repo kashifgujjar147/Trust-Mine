@@ -92,7 +92,9 @@ export function Login(){
 }
 
 export function Register(){
-  const [form,setForm]=useState({fullName:'',username:'',email:'',phone:'',password:'',referralCode:''}),
+  const [q]=useSearchParams();
+  const referralFromUrl=q.get('ref')?.trim()||'';
+  const [form,setForm]=useState({fullName:'',username:'',email:'',phone:'',password:'',referralCode:referralFromUrl}),
     [error,setError]=useState(''),
     [loading,setLoading]=useState(false);
   const {register}=useAuth();
@@ -139,3 +141,4 @@ export function ResetPassword(){
     <p className="auth-link"><Link to="/login">Back to sign in</Link></p>
   </AuthBox>
 }
+
