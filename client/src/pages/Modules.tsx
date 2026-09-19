@@ -667,14 +667,14 @@ export function Support(){
               WhatsApp Contact
             </a>
 
-            <a
-              className="btn"
-              href="https://m.me/61594176853527"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Messenger
-            </a>
+           <a
+  className="btn"
+  href="https://m.me/61594176853527"
+  target="_blank"
+  rel="noreferrer"
+>
+  Messenger
+</a>
           </div>
 
          
