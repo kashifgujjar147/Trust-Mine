@@ -328,42 +328,364 @@ export function Team(){const currency=useCurrency();
       selfBusiness:number; directBusiness:number; indirectBusiness:number; totalBusiness:number; commission:number;
     }|null>(null),
     [ref,setRef]=useState<{link:string;code:string;levels:number[]}|null>(null),
-    [copied,setCopied]=useState(false),[error,setError]=useState('');
+    [copied,setCopied]=useState(false),
+    [error,setError]=useState(''),
+    [expanded,setExpanded]=useState<string|null>(null);
 
   useEffect(()=>{
     let active=true;
+
     const apply=(a:any)=>{
       if(!active)return;
       setMembers(a?.members||[]);
       setSummary(a?.summary||null);
       setRef(a?.referral||null);
     };
+
     if(teamCache && Date.now()-teamCacheAt<TEAM_CACHE_MS){
       apply(teamCache);
       return()=>{active=false};
     }
+
     teamService.getTeam().then(a=>{
       teamCache=a;
       teamCacheAt=Date.now();
       apply(a);
-    }).catch(e=>{if(active)setError(e.message||'Unable to load team.')});
+    }).catch(e=>{
+      if(active)setError(e.message||'Unable to load team.');
+    });
+
     return()=>{active=false};
   },[]);
 
   const copy=()=>{
-    if(ref?.link)navigator.clipboard?.writeText(ref.link).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1200)}).catch(()=>setError('Clipboard access is unavailable.'));
+    if(ref?.link){
+      navigator.clipboard?.writeText(ref.link)
+        .then(()=>{
+          setCopied(true);
+          setTimeout(()=>setCopied(false),1200);
+        })
+        .catch(()=>setError('Clipboard access is unavailable.'));
+    }
   };
-  const s=summary||{directMembers:0,indirectTeam:0,totalTeam:0,activeTeam:0,selfBusiness:0,directBusiness:0,indirectBusiness:0,totalBusiness:0,commission:0};
 
-  return <Shell eyebrow="NETWORK" title="My Team" description="Complete team structure, business volume and referral network overview.">
-    {error&&<p className="error">{error}</p>}
-    <div className="grid2">
-      <Card><span className="eyebrow">REFERRAL LINK</span><div className="ref-link"><input readOnly value={ref?.link||''}/><Button onClick={copy} disabled={!ref?.link}>{copied?<Check size={15}/>:<Copy size={15}/>} {copied?'Copied':'Copy'}</Button></div><div className="stats mini-stats">{(ref?.levels||[]).map((r,i)=><div key={i}><b>{r}%</b><span>Level {i+1}</span></div>)}</div></Card>
-      <Card><span className="eyebrow">TEAM OVERVIEW</span><div className="metric-grid"><div><span>Direct Members</span><b>{s.directMembers}</b></div><div><span>Indirect Team</span><b>{s.indirectTeam}</b></div><div><span>Total Team</span><b>{s.totalTeam}</b></div><div><span>Active Team</span><b>{s.activeTeam}</b></div></div></Card>
-    </div>
-    <Card><span className="eyebrow">BUSINESS OVERVIEW</span><div className="metric-grid"><div><span>Self Business</span><b>{formatMoney(s.selfBusiness,currency)}</b></div><div><span>Direct Business</span><b>{formatMoney(s.directBusiness,currency)}</b></div><div><span>Indirect Business</span><b>{formatMoney(s.indirectBusiness,currency)}</b></div><div><span>Total Business</span><b>{formatMoney(s.totalBusiness,currency)}</b></div><div><span>Team Commission</span><b>{formatMoney(s.commission,currency)}</b></div></div></Card>
-    <Card><div className="card-head"><div><h3>Team members</h3><span>Direct and indirect members with their current business and commission details.</span></div></div>{members.length?<Table headers={['User','Level','Status','Joined','Business','Commission']}>{members.map(m=><tr key={m._id}><td><b>{m.name}</b><small>{m.userId}</small></td><td>L{m.level}</td><td><StatusBadge status={m.status}/></td><td>{new Date(m.joinedAt).toLocaleDateString()}</td><td>{formatMoney(m.volume,currency)}</td><td>{formatMoney(m.commission,currency)}</td></tr>)}</Table>:<div className="muted-copy">Team data will appear here.</div>}</Card>
-  </Shell>
+  const toggleMember=(id:string)=>{
+    setExpanded(current=>current===id?null:id);
+  };
+
+  const directMembers=members.filter(m=>Number(m.level)===1);
+  const indirectMembers=members.filter(m=>Number(m.level)>1);
+
+  const s=summary||{
+    directMembers:0,
+    indirectTeam:0,
+    totalTeam:0,
+    activeTeam:0,
+    selfBusiness:0,
+    directBusiness:0,
+    indirectBusiness:0,
+    totalBusiness:0,
+    commission:0
+  };
+
+  const renderMember=(m:TeamMember,showExpand=true)=>{
+    const isExpanded=expanded===m._id;
+
+    return (
+      <div
+        key={m._id}
+        style={{
+          border:'1px solid rgba(255,255,255,0.08)',
+          borderRadius:'14px',
+          marginBottom:'10px',
+          overflow:'hidden'
+        }}
+      >
+        <button
+          type="button"
+          onClick={()=>showExpand&&toggleMember(m._id)}
+          style={{
+            width:'100%',
+            display:'grid',
+            gridTemplateColumns:'minmax(180px,2fr) 80px 110px 120px 130px 130px',
+            gap:'12px',
+            alignItems:'center',
+            textAlign:'left',
+            padding:'14px 16px',
+            border:0,
+            background:'transparent',
+            color:'inherit',
+            cursor:showExpand?'pointer':'default'
+          }}
+        >
+          <span>
+            <b>{m.name}</b>
+            <small style={{display:'block'}}>{m.userId}</small>
+          </span>
+
+          <span>L{m.level}</span>
+
+          <span>
+            <StatusBadge status={m.status}/>
+          </span>
+
+          <span>
+            {new Date(m.joinedAt).toLocaleDateString()}
+          </span>
+
+          <span>
+            {formatMoney(m.volume,currency)}
+          </span>
+
+          <span>
+            {formatMoney(m.commission,currency)}
+            {showExpand&&(
+              <small
+                style={{
+                  display:'block',
+                  marginTop:'3px'
+                }}
+              >
+                {isExpanded?'Collapse':'View details'}
+              </small>
+            )}
+          </span>
+        </button>
+
+        {isExpanded&&(
+          <div
+            style={{
+              borderTop:'1px solid rgba(255,255,255,0.08)',
+              padding:'16px',
+              background:'rgba(255,255,255,0.02)'
+            }}
+          >
+            <div className="metric-grid">
+              <div>
+                <span>Name</span>
+                <b>{m.name||'—'}</b>
+              </div>
+
+              <div>
+                <span>User ID</span>
+                <b>{m.userId||'—'}</b>
+              </div>
+
+              <div>
+                <span>Team Level</span>
+                <b>Level {m.level}</b>
+              </div>
+
+              <div>
+                <span>Status</span>
+                <b>{m.status||'—'}</b>
+              </div>
+
+              <div>
+                <span>Joined</span>
+                <b>{new Date(m.joinedAt).toLocaleDateString()}</b>
+              </div>
+
+              <div>
+                <span>Business</span>
+                <b>{formatMoney(m.volume,currency)}</b>
+              </div>
+
+              <div>
+                <span>Commission</span>
+                <b>{formatMoney(m.commission,currency)}</b>
+              </div>
+            </div>
+
+            <p
+              className="muted-copy"
+              style={{marginTop:'14px'}}
+            >
+              This member's exact direct referrals are not exposed
+              by the current team response, so no unrelated members
+              are shown as this member's children.
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <Shell
+      eyebrow="NETWORK"
+      title="My Team"
+      description="Complete team structure, business volume and referral network overview."
+    >
+      {error&&<p className="error">{error}</p>}
+
+      <div className="grid2">
+        <Card>
+          <span className="eyebrow">REFERRAL LINK</span>
+
+          <div className="ref-link">
+            <input readOnly value={ref?.link||''}/>
+
+            <Button onClick={copy} disabled={!ref?.link}>
+              {copied?<Check size={15}/>:<Copy size={15}/>}
+              {copied?'Copied':'Copy'}
+            </Button>
+          </div>
+
+          <div className="stats mini-stats">
+            {(ref?.levels||[]).map((r,i)=>(
+              <div key={i}>
+                <b>{r}%</b>
+                <span>Level {i+1}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <span className="eyebrow">TEAM OVERVIEW</span>
+
+          <div className="metric-grid">
+            <div>
+              <span>Direct Members</span>
+              <b>{s.directMembers}</b>
+            </div>
+
+            <div>
+              <span>Indirect Team</span>
+              <b>{s.indirectTeam}</b>
+            </div>
+
+            <div>
+              <span>Total Team</span>
+              <b>{s.totalTeam}</b>
+            </div>
+
+            <div>
+              <span>Active Team</span>
+              <b>{s.activeTeam}</b>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <span className="eyebrow">BUSINESS OVERVIEW</span>
+
+        <div className="metric-grid">
+          <div>
+            <span>Self Business</span>
+            <b>{formatMoney(s.selfBusiness,currency)}</b>
+          </div>
+
+          <div>
+            <span>Direct Business</span>
+            <b>{formatMoney(s.directBusiness,currency)}</b>
+          </div>
+
+          <div>
+            <span>Indirect Business</span>
+            <b>{formatMoney(s.indirectBusiness,currency)}</b>
+          </div>
+
+          <div>
+            <span>Total Business</span>
+            <b>{formatMoney(s.totalBusiness,currency)}</b>
+          </div>
+
+          <div>
+            <span>Team Commission</span>
+            <b>{formatMoney(s.commission,currency)}</b>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="card-head">
+          <div>
+            <h3>Direct Members</h3>
+            <span>
+              Members directly connected to your account.
+              Click a member to view their available details.
+            </span>
+          </div>
+
+          <strong>{directMembers.length}</strong>
+        </div>
+
+        {directMembers.length ? (
+          <div className="table-wrap">
+            <div
+              style={{
+                display:'grid',
+                gridTemplateColumns:'minmax(180px,2fr) 80px 110px 120px 130px 130px',
+                gap:'12px',
+                padding:'10px 16px',
+                fontSize:'12px',
+                opacity:.7
+              }}
+            >
+              <span>User</span>
+              <span>Level</span>
+              <span>Status</span>
+              <span>Joined</span>
+              <span>Business</span>
+              <span>Commission</span>
+            </div>
+
+            {directMembers.map(m=>renderMember(m))}
+          </div>
+        ) : (
+          <div className="muted-copy">
+            No direct members found.
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <div className="card-head">
+          <div>
+            <h3>Indirect Team</h3>
+            <span>
+              Members returned by the backend at Level 2 and deeper.
+              Their exact parent relationship is not exposed in the
+              current frontend response.
+            </span>
+          </div>
+
+          <strong>{indirectMembers.length}</strong>
+        </div>
+
+        {indirectMembers.length ? (
+          <div className="table-wrap">
+            <div
+              style={{
+                display:'grid',
+                gridTemplateColumns:'minmax(180px,2fr) 80px 110px 120px 130px 130px',
+                gap:'12px',
+                padding:'10px 16px',
+                fontSize:'12px',
+                opacity:.7
+              }}
+            >
+              <span>User</span>
+              <span>Level</span>
+              <span>Status</span>
+              <span>Joined</span>
+              <span>Business</span>
+              <span>Commission</span>
+            </div>
+
+            {indirectMembers.map(m=>renderMember(m))}
+          </div>
+        ) : (
+          <div className="muted-copy">
+            No indirect members found.
+          </div>
+        )}
+      </Card>
+    </Shell>
+  );
 }
 export function Rewards(){const currency=useCurrency();const [tiers,setTiers]=useState<RewardTier[]>([]),[progress,setProgress]=useState(0),[claimed,setClaimed]=useState<string[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState('');const load=()=>{setError('');Promise.all([rewardService.getRewards(),rewardService.getStatus()]).then(([a,b])=>{setTiers(a);setProgress(Number(b.qualifyingVolume||0));setClaimed(b.claimedRewardIds||[])}).catch(e=>setError(e.message||'Unable to load rewards.'))};useEffect(()=>{void load()},[]);const claim=async(id:string)=>{setBusy(id);setError('');try{await rewardService.claimReward(id);setClaimed(x=>[...x,id]);await load()}catch(e){setError((e as Error).message||'Reward claim failed.')}finally{setBusy('')}};return <Shell eyebrow="REWARDS" title="Ring Rewards" description="Reward tiers and qualification state are configuration-driven.">{error&&<p className="error">{error}</p>}<div className="reward-grid">{tiers.map(t=>{const eligible=progress>=t.threshold,already=claimed.includes(t._id);return <Card key={t._id} className="reward-card"><div className="card-head"><span className="mini">TIER</span><StatusBadge status={t.status}/></div><h2>{formatMoney(t.reward,currency)}</h2><p>Threshold: {formatMoney(t.threshold,currency)}</p><Progress value={Math.min(100,(progress/t.threshold)*100)}/><div className="cycle-meta"><span>Progress</span><b>{formatMoney(Math.min(progress,t.threshold),currency)} / {formatMoney(t.threshold,currency)}</b></div><Button variant="ghost" disabled={!eligible||already} loading={busy===t._id} onClick={()=>claim(t._id)}>{already?'Claimed':eligible?'Claim reward':'View progress'}</Button></Card>})}</div><Card><h3>Qualifying volume</h3><p className="muted-copy">Completed qualifying deposits: {formatMoney(progress,currency)}. Rewards are not calculated from withdrawals, income or unrelated ledger events.</p></Card></Shell>}
 
@@ -893,6 +1215,7 @@ export function Support(){
     </Shell>
   );
 }
+
 
 
 
