@@ -12,8 +12,22 @@ export interface Deposit{_id:string;transactionId:string;amount:number;status:St
 export interface Withdrawal{_id:string;transactionId:string;amount:number;fee:number;netAmount:number;method:string;account:string;accountHolderName:string;status:Status;createdAt:string;reservedAmount?:number;idempotencyKey?:string;}
 export interface Transaction{_id:string;transactionId:string;type:TransactionType;amount:number;fee:number;netAmount:number;status:Status;reference?:string;description?:string;createdAt:string;}
 export interface TeamMember{_id:string;userId:string;name:string;level:number;status:string;joinedAt:string;volume:number;commission:number;}
-export interface RewardTier{_id:string;threshold:number;reward:number;status:string;sortOrder:number;}
-export interface PromoCode{_id:string;code:string;rewardType:string;rewardValue:number;usageLimit?:number;perUserLimit?:number;minRequirement?:number;expiresAt?:string;status:string;}
+export interface RewardTier{_id:string;rank:number;name:string;selfBusiness:number;directRequired:number;indirectRequired:number;teamRequired:number;threshold:number;reward:number;status:string;sortOrder:number;}
+export interface RewardProgress{
+  selfBusiness:number;
+  direct:number;
+  indirect:number;
+  team:number;
+}
+
+export interface RewardStatus{
+  rewards:RewardTier[];
+  tiers:RewardTier[];
+  progress:RewardProgress;
+  qualifyingVolume:number;
+  eligible:string[];
+  claimedRewardIds:string[];
+}export interface PromoCode{_id:string;code:string;rewardType:string;rewardValue:number;usageLimit?:number;perUserLimit?:number;minRequirement?:number;expiresAt?:string;status:string;}
 export interface PaymentMethod{_id:string;code:string;name:string;status:string;instructions:string;accountDetails?:string;minAmount:number;displayOrder:number;verificationMode:'MANUAL'|'AUTOMATIC';}
 export interface Notification{_id:string;title:string;message:string;read:boolean;createdAt:string;type:string;}
 export interface SupportTicket{
@@ -45,4 +59,3 @@ export interface DashboardData{balance:number;totalBalance?:number;availableBala
 export interface NotificationSettings{email:boolean;inApp:boolean}
 export interface PlatformSettings{currency:string;minimumDeposit:number;minimumWithdrawal:number;withdrawalFeePercent:number;commissionRates:number[];rewardTiers:RewardTier[];maintenanceMode:boolean;supportEmail:string;supportPhone:string;paymentMethods?:PaymentMethod[];notificationSettings?:NotificationSettings;cycleIntervalHours?:number;packageDurationDays?:number;}
 export interface AdminDashboardData{users:number;activeUsers:number;deposits:number;pendingDeposits:number;completedDeposits:number;withdrawals:number;pendingWithdrawals:number;packagePurchases:number;activePackages:number;incomeDistributed:number;commissionDistributed:number;rewardsDistributed:number;}
-

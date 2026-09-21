@@ -1,4 +1,4 @@
-﻿import {api,mockMode,setToken,clearToken} from './api';
+import {api,mockMode,setToken,clearToken} from './api';
 import * as m from './mock';
 import type {
   PackagePlan,
@@ -607,7 +607,6 @@ export const teamService={
       :(await api.get('/team')).data.referral
 };
 export const rewardService={
-
   getRewards:async()=>
     mockMode
       ?delay(m.rewards)
@@ -628,12 +627,46 @@ export const rewardService={
             0
           );
 
+      /*
+       * Mock team uses the same existing demo
+       * 1-4 level structure.
+       */
+      const activeTeam=
+        m.team.filter(
+          x=>x.status==='ACTIVE'
+        );
+
+      const direct=
+        activeTeam.filter(
+          x=>x.level===1
+        ).length;
+
+      const indirect=
+        activeTeam.filter(
+          x=>x.level>=2&&x.level<=4
+        ).length;
+
+      const team=direct+indirect;
+
+      const progress={
+        selfBusiness:qualifyingVolume,
+        direct,
+        indirect,
+        team
+      };
+
       return delay({
         rewards:m.rewards,
+        tiers:m.rewards,
+        progress,
         qualifyingVolume,
         eligible:m.rewards
           .filter(
-            r=>r.threshold<=qualifyingVolume
+            r=>
+              progress.selfBusiness>=r.selfBusiness&&
+              progress.direct>=r.directRequired&&
+              progress.indirect>=r.indirectRequired&&
+              progress.team>=r.teamRequired
           )
           .map(r=>r._id),
         claimedRewardIds:m.claimedRewardIds
@@ -659,7 +692,7 @@ export const rewardService={
         x=>x._id===id
       );
 
-      const volume=
+      const qualifyingVolume=
         m.transactions
           .filter(
             t=>
@@ -671,9 +704,33 @@ export const rewardService={
             0
           );
 
-      if(!r||volume<r.threshold){
+      const activeTeam=
+        m.team.filter(
+          x=>x.status==='ACTIVE'
+        );
+
+      const direct=
+        activeTeam.filter(
+          x=>x.level===1
+        ).length;
+
+      const indirect=
+        activeTeam.filter(
+          x=>x.level>=2&&x.level<=4
+        ).length;
+
+      const team=direct+indirect;
+
+      const eligible=
+        !!r&&
+        qualifyingVolume>=r.selfBusiness&&
+        direct>=r.directRequired&&
+        indirect>=r.indirectRequired&&
+        team>=r.teamRequired;
+
+      if(!eligible){
         throw new Error(
-          'Reward not eligible'
+          'Reward requirements not met'
         );
       }
 
@@ -716,7 +773,6 @@ export const rewardService={
     ).data;
   }
 };
-
 export const promoService={
 
   getPromos:()=>getOr<PromoCode[]>(
@@ -1838,6 +1894,20 @@ export const adminService={
 
       const created:RewardTier={
         _id:nowId('r'),
+        rank:Number(input.rank||0),
+        name:String(input.name||''),
+        selfBusiness:Number(
+          input.selfBusiness||0
+        ),
+        directRequired:Number(
+          input.directRequired||0
+        ),
+        indirectRequired:Number(
+          input.indirectRequired||0
+        ),
+        teamRequired:Number(
+          input.teamRequired||0
+        ),
         threshold:Number(
           input.threshold||0
         ),
@@ -1938,12 +2008,3 @@ export const apiServices={
 };
 
 export const telegramService={linkCode:async()=> (await api.post('/telegram/link-code')).data,unlink:async()=> (await api.post('/telegram/unlink')).data};
-
-
-
-
-
-
-
-
-

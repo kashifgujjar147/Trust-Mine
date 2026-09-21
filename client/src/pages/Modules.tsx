@@ -1,9 +1,9 @@
-﻿import {FormEvent,ReactNode,useEffect,useRef,useState} from 'react';
+import {FormEvent,ReactNode,useEffect,useRef,useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {useAuth} from '../context/AuthContext';
 import {depositService,withdrawalService,transactionService,teamService,rewardService,promoService,settingsService,notificationService,supportService,paymentMethodService,packageService,userService,telegramService,dashboardService} from '../services';
 import {Card,Button,Field,PageState,Progress,StatusBadge,SearchBar} from '../components/ui';
-import type {Deposit,PackagePlan,Transaction,TeamMember,RewardTier,PromoCode,PlatformSettings,Notification,SupportTicket,SupportMessage,Withdrawal as WithdrawalRecord,PaymentMethod,User} from '../types';
+import type {Deposit,PackagePlan,Transaction,TeamMember,RewardTier,RewardProgress,PromoCode,PlatformSettings,Notification,SupportTicket,SupportMessage,Withdrawal as WithdrawalRecord,PaymentMethod,User} from '../types';
 import {Copy,Check,ArrowRight,Send,LifeBuoy,CheckCircle,RefreshCw} from 'lucide-react';import {formatMoney} from '../config/currency';
 
 function Shell({eyebrow,title,description,actions,children}:{eyebrow:string;title:string;description:string;actions?:ReactNode;children:ReactNode}){return <div className="page"><div className="page-head"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{actions&&<div className="actions">{actions}</div>}</div>{children}</div>}
@@ -37,7 +37,7 @@ function useCurrency(){
 
 export function PackageDetails({id}:{id:string}){const currency=useCurrency();const [cycleHours,setCycleHours]=useState(24);useEffect(()=>{void getCachedSettings().then(x=>setCycleHours(Number(x.cycleIntervalHours||24))).catch(()=>undefined)},[]);const [p,setP]=useState<PackagePlan|null>(null),[error,setError]=useState('');const nav=useNavigate();const load=()=>{setError('');packageService.getPackage(id).then(v=>{if(v)setP(v);else setError('Package not found.')}).catch(e=>setError(e.message||'Unable to load package.'))};useEffect(()=>{void load()},[id]);if(error)return <Shell eyebrow="PACKAGE" title="Package details" description="The requested package could not be loaded."><PageState type="error" message={error} onRetry={load}/></Shell>;if(!p)return <Shell eyebrow="PACKAGE" title="Package details" description="Package configuration"><Card><div className="detail-hero"><span className="mini">{cycleHours}-HOUR CYCLE</span><strong>Package details</strong><p className="muted-copy">Package information is loading in the background.</p></div></Card></Shell>;return <Shell eyebrow="PACKAGE" title={p.name} description="Review the server-configured package before starting the deposit flow."><div className="detail-grid"><Card><div className="detail-hero"><span className="mini">{cycleHours}-HOUR CYCLE</span><StatusBadge status={p.status}/><strong>{formatMoney(p.amount,currency)}</strong><p>{p.description}</p></div><div className="metric-grid"><div><span>Daily configuration</span><b>{formatMoney(p.incomeConfiguration.daily,currency)}</b></div><div><span>Package duration</span><b>{p.cycleDays} days</b></div><div><span>Sort order</span><b>#{p.sortOrder}</b></div></div><Button disabled={p.status!=='ACTIVE'} onClick={()=>nav(`/deposit?packageId=${p._id}`)}>Deposit & Activate <ArrowRight size={15}/></Button></Card></div></Shell>}
 
-export function DepositHistory(){const currency=useCurrency();const [items,setItems]=useState<Deposit[]>([]),[q,setQ]=useState(''),[status,setStatus]=useState(''),[error,setError]=useState('');const load=()=>{setError('');depositService.getDeposits().then(setItems).catch(e=>setError(e.message||'Unable to load deposits.'))};useEffect(()=>{void load()},[]);const filtered=items.filter(x=>(!status||x.status===status)&&(x.transactionId+x.method+(x.packageName||'')+(x.reference||'')).toLowerCase().includes(q.toLowerCase()));return <Shell eyebrow="FUNDING" title="Deposit History" description="Track submitted deposits and their server-controlled verification state."><Card><div className="toolbar"><SearchBar value={q} onChange={setQ} placeholder="Search deposit ID, reference or methodâ€¦"/><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option><option>PENDING</option><option>PROCESSING</option><option>COMPLETED</option><option>REJECTED</option><option>FAILED</option><option>CANCELLED</option></select><Button variant="ghost" onClick={load}><RefreshCw size={14}/>Refresh</Button></div>{error&&<p className="error">{error}</p>}{filtered.length?<Table headers={['Transaction','Package','Amount','Method','Status','Date']}>{filtered.map(d=><tr key={d._id}><td><b>{d.transactionId}</b><small>{d.reference||'â€”'}</small></td><td>{d.packageName||'â€”'}</td><td>{formatMoney(d.amount,currency)}</td><td>{d.method}</td><td><StatusBadge status={d.status}/></td><td>{new Date(d.createdAt).toLocaleDateString()}</td></tr>)}</Table>:<PageState type="empty" message="No deposits match your filters."/>}</Card></Shell>}
+export function DepositHistory(){const currency=useCurrency();const [items,setItems]=useState<Deposit[]>([]),[q,setQ]=useState(''),[status,setStatus]=useState(''),[error,setError]=useState('');const load=()=>{setError('');depositService.getDeposits().then(setItems).catch(e=>setError(e.message||'Unable to load deposits.'))};useEffect(()=>{void load()},[]);const filtered=items.filter(x=>(!status||x.status===status)&&(x.transactionId+x.method+(x.packageName||'')+(x.reference||'')).toLowerCase().includes(q.toLowerCase()));return <Shell eyebrow="FUNDING" title="Deposit History" description="Track submitted deposits and their server-controlled verification state."><Card><div className="toolbar"><SearchBar value={q} onChange={setQ} placeholder="Search deposit ID, reference or method…"/><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option><option>PENDING</option><option>PROCESSING</option><option>COMPLETED</option><option>REJECTED</option><option>FAILED</option><option>CANCELLED</option></select><Button variant="ghost" onClick={load}><RefreshCw size={14}/>Refresh</Button></div>{error&&<p className="error">{error}</p>}{filtered.length?<Table headers={['Transaction','Package','Amount','Method','Status','Date']}>{filtered.map(d=><tr key={d._id}><td><b>{d.transactionId}</b><small>{d.reference||'—'}</small></td><td>{d.packageName||'—'}</td><td>{formatMoney(d.amount,currency)}</td><td>{d.method}</td><td><StatusBadge status={d.status}/></td><td>{new Date(d.createdAt).toLocaleDateString()}</td></tr>)}</Table>:<PageState type="empty" message="No deposits match your filters."/>}</Card></Shell>}
 
 export function Withdrawal(){
   const currency=useCurrency();
@@ -194,7 +194,7 @@ export function Withdrawal(){
           <div className="notice">
             <b>Withdrawal availability</b>
             <br/>
-            Withdrawal window: <strong>10:00 AM – 5:00 PM</strong> Pakistan time.
+            Withdrawal window: <strong>10:00 AM � 5:00 PM</strong> Pakistan time.
             <br/>
             One withdrawal is allowed every <strong>24 hours</strong>.
             <br/><br/>
@@ -202,10 +202,10 @@ export function Withdrawal(){
             {eligibilityLoading ? (
               <span>Checking withdrawal availability...</span>
             ) : eligible ? (
-              <span className="success">✅ Withdrawal available</span>
+              <span className="success">? Withdrawal available</span>
             ) : (
               <span className="error">
-                🔒 Next withdrawal available in <strong>{countdown||'calculating...'}</strong>
+                ?? Next withdrawal available in <strong>{countdown||'calculating...'}</strong>
               </span>
             )}
           </div>
@@ -319,7 +319,7 @@ export function Withdrawal(){
 
 export function WithdrawalHistory(){const currency=useCurrency();const [items,setItems]=useState<WithdrawalRecord[]>([]),[error,setError]=useState('');const load=async()=>{try{const data=await withdrawalService.getWithdrawals();setItems(data);setError('')}catch(e){const err=e as Error;setError(err.message||'Unable to load withdrawals.')}};useEffect(()=>{void load();const interval=window.setInterval(()=>{void load()},5000);return()=>window.clearInterval(interval)},[]);return <Shell eyebrow="PAYOUT" title="Withdrawal History" description="Review payout requests and their processing status."><Card>{error&&<p className="error">{error}</p>}{items.length?<Table headers={['Transaction','Amount','Fee','Net','Method','Status','Date']}>{items.map(w=><tr key={w._id}><td>{w.transactionId}</td><td>{formatMoney(w.amount,currency)}</td><td>{formatMoney(w.fee,currency)}</td><td>{formatMoney(w.netAmount,currency)}</td><td>{w.method}</td><td><StatusBadge status={w.status}/></td><td>{new Date(w.createdAt).toLocaleDateString()}</td></tr>)}</Table>:<PageState type="empty" message="No withdrawal requests yet."/>}</Card></Shell>}
 
-export function Transactions(){const currency=useCurrency();const [items,setItems]=useState<Transaction[]>([]),[q,setQ]=useState(''),[type,setType]=useState(''),[status,setStatus]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true);const requestSeq=useRef(0);const load=()=>{const seq=++requestSeq.current;setLoading(true);setError('');transactionService.getTransactions({q,type,status}).then(rows=>{if(seq===requestSeq.current)setItems(rows)}).catch(e=>{if(seq===requestSeq.current)setError(e.message||'Unable to load transactions.')}).finally(()=>{if(seq===requestSeq.current)setLoading(false)})};useEffect(()=>{const timer=window.setTimeout(()=>{void load()},300);return()=>window.clearTimeout(timer)},[q,type,status]);return <Shell eyebrow="LEDGER" title="Transaction History" description="Unified, traceable financial events returned by the ledger service."><Card><div className="toolbar"><SearchBar value={q} onChange={setQ} placeholder="Search transactionâ€¦"/><div className="filter-row"><select value={type} onChange={e=>setType(e.target.value)}><option value="">All types</option>{['DEPOSIT','PACKAGE_PURCHASE','PACKAGE_INCOME','WITHDRAWAL','WITHDRAWAL_FEE','COMMISSION','REWARD','PROMO_REWARD','ADJUSTMENT','REFUND','REVERSAL'].map(x=><option key={x} value={x}>{x}</option>)}</select><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option>{['COMPLETED','PENDING','PROCESSING','REJECTED','APPROVED','FAILED'].map(x=><option key={x} value={x}>{x}</option>)}</select></div><Button variant="ghost" onClick={load}><RefreshCw size={14}/>Refresh</Button></div>{error&&<p className="error">{error}</p>}{loading&&items.length===0?<div className="skeleton" style={{height:180,width:'100%'}}/>:items.length?<Table headers={['ID','Type','Amount','Fee','Net','Status','Date']}>{items.map(t=><tr key={t._id}><td><b>{t.transactionId}</b><small>{t.description||'Ledger event'}</small></td><td>{t.type}</td><td>{formatMoney(t.amount,currency)}</td><td>{formatMoney(t.fee,currency)}</td><td>{formatMoney(t.netAmount,currency)}</td><td><StatusBadge status={t.status}/></td><td>{new Date(t.createdAt).toLocaleDateString()}</td></tr>)}</Table>:<PageState type="empty" message="No transactions found."/>}</Card></Shell>}
+export function Transactions(){const currency=useCurrency();const [items,setItems]=useState<Transaction[]>([]),[q,setQ]=useState(''),[type,setType]=useState(''),[status,setStatus]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true);const requestSeq=useRef(0);const load=()=>{const seq=++requestSeq.current;setLoading(true);setError('');transactionService.getTransactions({q,type,status}).then(rows=>{if(seq===requestSeq.current)setItems(rows)}).catch(e=>{if(seq===requestSeq.current)setError(e.message||'Unable to load transactions.')}).finally(()=>{if(seq===requestSeq.current)setLoading(false)})};useEffect(()=>{const timer=window.setTimeout(()=>{void load()},300);return()=>window.clearTimeout(timer)},[q,type,status]);return <Shell eyebrow="LEDGER" title="Transaction History" description="Unified, traceable financial events returned by the ledger service."><Card><div className="toolbar"><SearchBar value={q} onChange={setQ} placeholder="Search transaction…"/><div className="filter-row"><select value={type} onChange={e=>setType(e.target.value)}><option value="">All types</option>{['DEPOSIT','PACKAGE_PURCHASE','PACKAGE_INCOME','WITHDRAWAL','WITHDRAWAL_FEE','COMMISSION','REWARD','PROMO_REWARD','ADJUSTMENT','REFUND','REVERSAL'].map(x=><option key={x} value={x}>{x}</option>)}</select><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option>{['COMPLETED','PENDING','PROCESSING','REJECTED','APPROVED','FAILED'].map(x=><option key={x} value={x}>{x}</option>)}</select></div><Button variant="ghost" onClick={load}><RefreshCw size={14}/>Refresh</Button></div>{error&&<p className="error">{error}</p>}{loading&&items.length===0?<div className="skeleton" style={{height:180,width:'100%'}}/>:items.length?<Table headers={['ID','Type','Amount','Fee','Net','Status','Date']}>{items.map(t=><tr key={t._id}><td><b>{t.transactionId}</b><small>{t.description||'Ledger event'}</small></td><td>{t.type}</td><td>{formatMoney(t.amount,currency)}</td><td>{formatMoney(t.fee,currency)}</td><td>{formatMoney(t.netAmount,currency)}</td><td><StatusBadge status={t.status}/></td><td>{new Date(t.createdAt).toLocaleDateString()}</td></tr>)}</Table>:<PageState type="empty" message="No transactions found."/>}</Card></Shell>}
 
 export function Team(){const currency=useCurrency();
   const [members,setMembers]=useState<TeamMember[]>([]),
@@ -463,12 +463,12 @@ export function Team(){const currency=useCurrency();
             <div className="metric-grid">
               <div>
                 <span>Name</span>
-                <b>{m.name||'—'}</b>
+                <b>{m.name||'�'}</b>
               </div>
 
               <div>
                 <span>User ID</span>
-                <b>{m.userId||'—'}</b>
+                <b>{m.userId||'�'}</b>
               </div>
 
               <div>
@@ -478,7 +478,7 @@ export function Team(){const currency=useCurrency();
 
               <div>
                 <span>Status</span>
-                <b>{m.status||'—'}</b>
+                <b>{m.status||'�'}</b>
               </div>
 
               <div>
@@ -687,7 +687,304 @@ export function Team(){const currency=useCurrency();
     </Shell>
   );
 }
-export function Rewards(){const currency=useCurrency();const [tiers,setTiers]=useState<RewardTier[]>([]),[progress,setProgress]=useState(0),[claimed,setClaimed]=useState<string[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState('');const load=()=>{setError('');Promise.all([rewardService.getRewards(),rewardService.getStatus()]).then(([a,b])=>{setTiers(a);setProgress(Number(b.qualifyingVolume||0));setClaimed(b.claimedRewardIds||[])}).catch(e=>setError(e.message||'Unable to load rewards.'))};useEffect(()=>{void load()},[]);const claim=async(id:string)=>{setBusy(id);setError('');try{await rewardService.claimReward(id);setClaimed(x=>[...x,id]);await load()}catch(e){setError((e as Error).message||'Reward claim failed.')}finally{setBusy('')}};return <Shell eyebrow="REWARDS" title="Ring Rewards" description="Reward tiers and qualification state are configuration-driven.">{error&&<p className="error">{error}</p>}<div className="reward-grid">{tiers.map(t=>{const eligible=progress>=t.threshold,already=claimed.includes(t._id);return <Card key={t._id} className="reward-card"><div className="card-head"><span className="mini">TIER</span><StatusBadge status={t.status}/></div><h2>{formatMoney(t.reward,currency)}</h2><p>Threshold: {formatMoney(t.threshold,currency)}</p><Progress value={Math.min(100,(progress/t.threshold)*100)}/><div className="cycle-meta"><span>Progress</span><b>{formatMoney(Math.min(progress,t.threshold),currency)} / {formatMoney(t.threshold,currency)}</b></div><Button variant="ghost" disabled={!eligible||already} loading={busy===t._id} onClick={()=>claim(t._id)}>{already?'Claimed':eligible?'Claim reward':'View progress'}</Button></Card>})}</div><Card><h3>Qualifying volume</h3><p className="muted-copy">Completed qualifying deposits: {formatMoney(progress,currency)}. Rewards are not calculated from withdrawals, income or unrelated ledger events.</p></Card></Shell>}
+export function Rewards(){
+  const currency=useCurrency();
+  const [tiers,setTiers]=useState<RewardTier[]>([]);
+  const [progress,setProgress]=useState<RewardProgress>({
+    selfBusiness:0,
+    direct:0,
+    indirect:0,
+    team:0
+  });
+  const [claimed,setClaimed]=useState<string[]>([]);
+  const [error,setError]=useState('');
+  const [busy,setBusy]=useState('');
+
+  const load=async()=>{
+    setError('');
+
+    try{
+      const status=await rewardService.getStatus();
+
+      setTiers(status.rewards||status.tiers||[]);
+      setProgress(
+        status.progress||{
+          selfBusiness:Number(status.qualifyingVolume||0),
+          direct:0,
+          indirect:0,
+          team:0
+        }
+      );
+      setClaimed(status.claimedRewardIds||[]);
+    }catch(e){
+      setError(
+        (e as Error).message||
+        'Unable to load rewards.'
+      );
+    }
+  };
+
+  useEffect(()=>{
+    void load();
+  },[]);
+
+  const claim=async(id:string)=>{
+    setBusy(id);
+    setError('');
+
+    try{
+      await rewardService.claimReward(id);
+      await load();
+    }catch(e){
+      setError(
+        (e as Error).message||
+        'Reward claim failed.'
+      );
+    }finally{
+      setBusy('');
+    }
+  };
+
+  return <Shell
+    eyebrow="REWARDS"
+    title="Rank & Reward Program"
+    description="Your rank is based on Self Business, Direct, Indirect and Team requirements."
+  >
+    {error&&<p className="error">{error}</p>}
+
+    <Card>
+      <div className="card-head">
+        <div>
+          <span className="mini">CURRENT PROGRESS</span>
+          <h3>Business & Team Qualification</h3>
+        </div>
+      </div>
+
+      <div className="grid2">
+        <div className="settings-row">
+          <span>Self Business</span>
+          <b>{formatMoney(progress.selfBusiness,currency)}</b>
+        </div>
+
+        <div className="settings-row">
+          <span>Direct</span>
+          <b>{progress.direct}</b>
+        </div>
+
+        <div className="settings-row">
+          <span>Indirect</span>
+          <b>{progress.indirect}</b>
+        </div>
+
+        <div className="settings-row">
+          <span>Team</span>
+          <b>{progress.team}</b>
+        </div>
+      </div>
+
+      <p className="muted-copy">
+        Self Business is calculated from completed qualifying deposits.
+        Direct is Level 1. Indirect is Levels 2-4.
+      </p>
+    </Card>
+
+    <div className="reward-grid">
+      {tiers.map(t=>{
+        const selfProgress=
+          Math.min(
+            progress.selfBusiness,
+            t.selfBusiness
+          );
+
+        const directProgress=
+          Math.min(
+            progress.direct,
+            t.directRequired
+          );
+
+        const indirectProgress=
+          Math.min(
+            progress.indirect,
+            t.indirectRequired
+          );
+
+        const teamProgress=
+          Math.min(
+            progress.team,
+            t.teamRequired
+          );
+
+        const selfReady=
+          progress.selfBusiness>=t.selfBusiness;
+
+        const directReady=
+          progress.direct>=t.directRequired;
+
+        const indirectReady=
+          progress.indirect>=t.indirectRequired;
+
+        const teamReady=
+          progress.team>=t.teamRequired;
+
+        const eligible=
+          selfReady&&
+          directReady&&
+          indirectReady&&
+          teamReady;
+
+        const already=
+          claimed.includes(t._id);
+
+        return <Card
+          key={t._id}
+          className="reward-card"
+        >
+          <div className="card-head">
+            <div>
+              <span className="mini">
+                RANK {t.rank}
+              </span>
+              <h2>{t.name}</h2>
+            </div>
+
+            <StatusBadge
+              status={
+                already
+                  ? 'CLAIMED'
+                  : eligible
+                    ? 'ELIGIBLE'
+                    : t.status
+              }
+            />
+          </div>
+
+          <div className="grid2">
+            <div className="settings-row">
+              <span>Self Business</span>
+              <b>
+                {formatMoney(
+                  selfProgress,
+                  currency
+                )}
+                {' / '}
+                {formatMoney(
+                  t.selfBusiness,
+                  currency
+                )}
+              </b>
+            </div>
+
+            <div className="settings-row">
+              <span>Direct</span>
+              <b>
+                {directProgress} / {t.directRequired}
+              </b>
+            </div>
+
+            <div className="settings-row">
+              <span>Indirect</span>
+              <b>
+                {indirectProgress} / {t.indirectRequired}
+              </b>
+            </div>
+
+            <div className="settings-row">
+              <span>Team</span>
+              <b>
+                {teamProgress} / {t.teamRequired}
+              </b>
+            </div>
+
+            <div className="settings-row">
+              <span>Target</span>
+              <b>
+                {formatMoney(
+                  t.threshold,
+                  currency
+                )}
+              </b>
+            </div>
+
+            <div className="settings-row">
+              <span>Salary</span>
+              <b>
+                {formatMoney(
+                  t.reward,
+                  currency
+                )}
+              </b>
+            </div>
+          </div>
+
+          <div className="cycle-meta">
+            <span>Self Business progress</span>
+            <b>
+              {formatMoney(
+                selfProgress,
+                currency
+              )}
+              {' / '}
+              {formatMoney(
+                t.selfBusiness,
+                currency
+              )}
+            </b>
+          </div>
+
+          <Progress
+            value={
+              t.selfBusiness>0
+                ? Math.min(
+                    100,
+                    (
+                      progress.selfBusiness/
+                      t.selfBusiness
+                    )*100
+                  )
+                : 100
+            }
+          />
+
+          <div className="cycle-meta">
+            <span>Team progress</span>
+            <b>
+              {progress.team} / {t.teamRequired}
+            </b>
+          </div>
+
+          <Progress
+            value={
+              t.teamRequired>0
+                ? Math.min(
+                    100,
+                    (
+                      progress.team/
+                      t.teamRequired
+                    )*100
+                  )
+                : 100
+            }
+          />
+
+          <div className="actions">
+            <Button
+              variant="ghost"
+              disabled={!eligible||already}
+              loading={busy===t._id}
+              onClick={()=>claim(t._id)}
+            >
+              {already
+                ? 'Claimed'
+                : eligible
+                  ? 'Claim Reward'
+                  : 'Requirements Not Met'}
+            </Button>
+          </div>
+        </Card>
+      })}
+    </div>
+  </Shell>
+}
 
 export function Promo(){const currency=useCurrency();const [code,setCode]=useState(''),[result,setResult]=useState<{code:string;rewardType:string;rewardValue:number}|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[history,setHistory]=useState<string[]>([]);const apply=async()=>{if(!code.trim()){setError('Enter a promo code.');return}setLoading(true);setError('');try{const r=await promoService.applyPromo(code.trim());const applied={code:String(r.code),rewardType:String(r.rewardType),rewardValue:Number(r.rewardValue)};setResult(applied);setHistory(h=>[applied.code,...h.filter(x=>x!==applied.code)]);setCode('')}catch(e){setResult(null);setError((e as Error).message||'Promo code could not be applied.')}finally{setLoading(false)}};return <Shell eyebrow="PROMOTIONS" title="Promo Code" description="Validate and apply promotion codes through the service layer."><div className="grid2"><Card><div className="inline-form"><input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="ENTER PROMO CODE"/><Button onClick={apply} loading={loading}>Apply</Button></div>{error&&<p className="error">{error}</p>}{result&&<div className="success-box"><CheckCircle/><div><b>{result.code} applied</b><span>Reward: {result.rewardType} {formatMoney(result.rewardValue,currency)}</span></div></div>}</Card><Card><span className="eyebrow">PROMO HISTORY</span>{history.length?history.map(x=><div className="list-row" key={x}><b>{x}</b><StatusBadge status="COMPLETED"/></div>):<div className="empty">No promo codes used yet.</div>}</Card></div></Shell>}
 export function Profile(){const {user:authUser}=useAuth();const [user,setUser]=useState<User|null>(authUser),[fullName,setFullName]=useState(authUser?.fullName||''),[phone,setPhone]=useState(authUser?.phone||''),[saving,setSaving]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState('');
@@ -1215,7 +1512,3 @@ export function Support(){
     </Shell>
   );
 }
-
-
-
-

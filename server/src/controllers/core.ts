@@ -1,4 +1,4 @@
-﻿import { hash ,sign} from '../utils/auth.js';
+import { hash ,sign} from '../utils/auth.js';
 import {paymentProofExists} from '../services/paymentProofStorage.js';
 
 import { Request, Response } from 'express';
@@ -2983,7 +2983,6 @@ export async function rewards(
   req: AuthedRequest,
   res: Response
 ) {
-
   const RewardClaim =
     (
       await import(
@@ -2996,65 +2995,34 @@ export async function rewards(
       '../services/rewardService.js'
     );
 
-  const qualifying =
-    await rewardService.qualifyingVolume(
-      req.user!.id
-    );
+  const {
+    progress,
+    rewards: tiers,
+    eligible
+  } = await rewardService.getRewardProgress(
+    req.user!.id
+  );
 
-  const [
-    tiers,
-    eligible,
-    claims
-  ] = await Promise.all([
-    Reward.find({
-      status:
-        'ACTIVE'
-    }).limit(100).lean(),
+  const claims = await RewardClaim.find({
+    userId: req.user!.id
+  })
+    .select('rewardId')
+    .lean();
 
-    Reward.find({
-      status:
-        'ACTIVE',
-      threshold:
-        { $lte: qualifying }
-    }).sort({
-      threshold:
-        1
-    }).limit(100).lean(),
-
-    RewardClaim.find({
-      userId:
-        req.user!.id
-    }).select(
-      'rewardId'
-    ).lean()
-  ]);
+  const claimedRewardIds =
+    claims.map(x => String(x.rewardId));
 
   res.json({
-
-    rewards:
-      tiers,
-
+    rewards: tiers,
     tiers,
-
-    eligible:
-      eligible.map(
-        x =>
-          String(x._id)
-      ),
-
-    qualifyingVolume:
-      qualifying,
-
-    claimedRewardIds:
-      claims.map(
-        x =>
-          String(
-            x.rewardId
-          )
-      )
+    progress,
+    qualifyingVolume: progress.selfBusiness,
+    eligible: eligible.map(
+      x => String(x._id)
+    ),
+    claimedRewardIds
   });
 }
-
 
 export async function claimRewardRoute(
   req: AuthedRequest,
@@ -6396,26 +6364,3 @@ export async function adminUpdateUserStatus(
     user: updatedUser
   });
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
