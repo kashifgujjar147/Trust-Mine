@@ -1,0 +1,17 @@
+warning: in the working copy of 'client/src/pages/Modules.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/services/index.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/services/mock.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/types/index.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package-lock.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/src/controllers/core.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/src/seed.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/src/services/rewardService.ts', LF will be replaced by CRLF the next time Git touches it
+client/src/pages/Modules.tsx:1515: new blank line at EOF.
+client/src/services/index.ts:2011: new blank line at EOF.
+client/src/services/mock.ts:38: new blank line at EOF.
+client/src/types/index.ts:62: new blank line at EOF.
+client/tsconfig.json:7: new blank line at EOF.
+server/src/controllers/core.ts:6367: new blank line at EOF.
+server/src/models/index.ts:46: new blank line at EOF.
+server/src/seed.ts:130: new blank line at EOF.
+server/src/services/rewardService.ts:244: new blank line at EOF.
