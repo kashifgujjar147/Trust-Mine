@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -53,6 +53,12 @@ app.use(
 
 // API routes
 app.use('/api', router);
+app.get('/api/db-check', (_req, res) => {
+  res.json({
+    connected: mongoose.connection.readyState === 1,
+    database: mongoose.connection.db?.databaseName ?? null,
+  });
+});
 
 // React/Vite production build
 const __filename = fileURLToPath(import.meta.url);
